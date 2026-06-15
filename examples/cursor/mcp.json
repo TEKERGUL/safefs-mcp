@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "safefs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@tekergul/safefs-mcp", "serve", "--root", "."],
+      "env": {}
+    }
+  }
+}

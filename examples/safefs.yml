@@ -1,0 +1,35 @@
+workspace:
+  root: "."
+  followSymlinks: false
+
+limits:
+  maxFileSizeMB: 50
+  maxTimelineEventsWarning: 10000
+  maxPatchSearchLength: 20000
+
+# Add project-specific protected patterns here. SafeFS also enforces
+# mandatory protected paths such as .git/, .safefs/, .env*, keys,
+# secrets/, node_modules/, dist/, and build/ even if this list is empty.
+protected:
+  - ".git/**"
+  - ".safefs/**"
+  - ".env"
+  - ".env.*"
+  - "**/*.pem"
+  - "**/*.key"
+  - "**/id_rsa"
+  - "**/id_ed25519"
+  - "secrets/**"
+  - "node_modules/**"
+  - "dist/**"
+  - "build/**"
+  - ".next/**"
+  - "coverage/**"
+
+rollback:
+  defaultDryRun: true
+  conflictMode: "skip"
+
+storage:
+  objectCompression: false
+  retentionWarningDays: 30
