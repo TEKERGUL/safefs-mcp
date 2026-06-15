@@ -1,29 +1,31 @@
 # SafeFS MCP Client Examples
 
-This directory contains example configurations for popular MCP clients. SafeFS exposes standard MCP tools, meaning it is compatible with *any* MCP-enabled AI coding agent.
+This directory contains example configuration files for MCP clients.
 
-## Auto-Setup (Recommended)
-
-The easiest way to configure your client is to use the `init` command:
+## Auto Setup
 
 ```bash
-npx -y @tekergul/safefs-mcp init --yes --clients codex,cursor,claude
+safefs init --yes --clients codex,cursor,claude,gemini
 ```
 
-This command will automatically detect your project and create the appropriate configuration files (`.cursor/mcp.json`, `.codex/config.toml`, `.mcp.json`).
+This creates config files for selected clients without overwriting existing files.
+
+Before npm publish, use local checkout mode:
+
+```bash
+node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini
+```
 
 ## Manual Setup
 
-If you prefer to set up your MCP client manually, you can use the files in this directory as a reference.
+- Claude Code: copy `claude-code/.mcp.json` to your project `.mcp.json`.
+- Cursor: copy `cursor/mcp.json` to your project `.cursor/mcp.json`.
+- Codex: copy `codex/config.toml` to your project `.codex/config.toml`.
+- Gemini CLI: copy `gemini/settings.json` to your project `.gemini/settings.json`.
 
-### Claude Code (`claude-code`)
-To use SafeFS with Claude Code, copy the contents of `claude-code/mcp.json` into your project's `.mcp.json` file.
+## Notes
 
-### Cursor (`cursor`)
-To use SafeFS with Cursor, copy the contents of `cursor/mcp.json` into your project's `.cursor/mcp.json` file. Note that Cursor supports workspace-level MCP configurations.
-
-### Codex / Roo Code / Cline (`codex`)
-To use SafeFS with Codex, Roo Code, or Cline, copy the contents of `codex/config.toml` into your project's `.codex/config.toml` or equivalent configuration path depending on the specific fork.
-
-### Custom Configuration (`safefs.yml`)
-The `safefs.yml` file is an example of the `.safefs.yml` configuration file that goes in the root of your project. You can use it to override default limits and add custom protected paths.
+- Gemini CLI tools are exposed with fully qualified names like `mcp_safefs_safe_write`.
+- Run `safefs doctor --gemini-smoke` to verify Gemini CLI can see the SafeFS MCP config.
+- The `safefs.yml` file is an example `.safefs.yml` project config.
+- If installing from a local GitHub checkout before npm publish, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.

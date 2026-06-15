@@ -70,7 +70,15 @@ Usage:
 
 Init options:
   --yes                      Run non-interactively
-  --clients <list>           Comma-separated clients: codex,cursor,claude
+  --clients <list>           Comma-separated clients: codex,cursor,claude,gemini
+  --local                    Write MCP configs that run this local checkout with node
+
+Doctor options:
+  --online                   Check whether the npm package is reachable
+  --gemini-smoke             Check whether Gemini CLI can see the SafeFS MCP config
+
+Global options:
+  --root <path>              Project root (defaults to current directory)
 
 Timeline options:
   --since <time>    Filter events since time (15m, 1h, 3h, 1d, 7d, ISO)
@@ -83,7 +91,8 @@ Rollback options:
   --dry-run         Preview without applying (default)
 
 Examples:
-  safefs init --yes --clients codex,cursor,claude
+  safefs init --yes --clients codex,cursor,claude,gemini
+  node dist/cli.js init --local --yes --clients gemini
   safefs timeline --since 3h
   safefs diff --since 1h
   safefs rollback 1h
@@ -99,6 +108,8 @@ async function handleInit(): Promise<void> {
   await runInit(root, {
     yes: args.includes("--yes"),
     clients: parseClients(getFlag("--clients")),
+    local: args.includes("--local"),
+    localCliPath: resolveCurrentCliPath(),
   });
 }
 
@@ -164,7 +175,10 @@ async function handleStorage(): Promise<void> {
 
 async function handleDoctor(): Promise<void> {
   const root = resolveRoot();
-  const result = await runDoctor(root);
+  const result = await runDoctor(root, {
+    online: args.includes("--online"),
+    geminiSmoke: args.includes("--gemini-smoke"),
+  });
   if (!result.ok) {
     process.exitCode = 1;
   }
@@ -178,6 +192,10 @@ function resolveRoot(): string {
   return process.cwd();
 }
 
+function resolveCurrentCliPath(): string {
+  return path.resolve(process.argv[1] ?? path.join("dist", "cli.js"));
+}
+
 function getFlag(name: string): string | undefined {
   const index = args.indexOf(name);
   if (index === -1) return undefined;
@@ -186,14 +204,14 @@ function getFlag(name: string): string | undefined {
 
 function parseClients(
   value: string | undefined
-): Array<"codex" | "cursor" | "claude"> | undefined {
+): Array<"codex" | "cursor" | "claude" | "gemini"> | undefined {
   if (!value) return undefined;
 
-  const allowed = new Set(["codex", "cursor", "claude"]);
+  const allowed = new Set(["codex", "cursor", "claude", "gemini"]);
   return value
     .split(",")
     .map((client) => client.trim().toLowerCase())
-    .filter((client): client is "codex" | "cursor" | "claude" => allowed.has(client));
+    .filter((client): client is "codex" | "cursor" | "claude" | "gemini" => allowed.has(client));
 }
 
 main().catch((err) => {

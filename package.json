@@ -1,8 +1,9 @@
 {
   "name": "@tekergul/safefs-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A lightweight time machine for AI coding agents",
   "type": "module",
+  "packageManager": "pnpm@11.5.2",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -10,6 +11,7 @@
     "safefs-mcp": "dist/cli.js"
   },
   "files": [
+    "assets",
     "dist",
     "examples",
     "README.md",
@@ -37,10 +39,19 @@
     "claude",
     "cursor",
     "codex",
+    "gemini",
     "safety"
   ],
   "author": "tekergul",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TEKERGUL/safefs-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TEKERGUL/safefs-mcp/issues"
+  },
+  "homepage": "https://github.com/TEKERGUL/safefs-mcp#readme",
   "engines": {
     "node": ">=20.0.0"
   },

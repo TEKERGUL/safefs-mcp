@@ -4,11 +4,14 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_CONFIG_YAML } from "../config/defaultConfig.js";
 
-export type InitClient = "codex" | "cursor" | "claude";
+export type InitClient = "codex" | "cursor" | "claude" | "gemini";
+export type InitInstallMode = "npm" | "local";
 
 export interface InitOptions {
   yes?: boolean;
   clients?: InitClient[];
+  local?: boolean;
+  localCliPath?: string;
 }
 
 export interface InitResult {
@@ -16,7 +19,20 @@ export interface InitResult {
   updated: string[];
   skipped: string[];
   clients: InitClient[];
+  installMode: InitInstallMode;
 }
+
+interface ClientFile {
+  file: string;
+  content: string;
+}
+
+interface McpCommandSpec {
+  command: string;
+  args: string[];
+}
+
+const PACKAGE_NAME = "@tekergul/safefs-mcp";
 
 const AGENTS_MD = `# SafeFS Agent Rules
 
@@ -33,6 +49,8 @@ Use SafeFS tools for file changes:
 - Use \`safe_rollback_time\` with \`dryRun: true\` before applying rollback.
 - Use \`safe_storage_status\` to inspect SafeFS storage.
 
+Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as \`mcp_safefs_safe_write\`.
+
 Safety rules:
 
 - Never access \`.safefs/\` internals directly.
@@ -42,67 +60,18 @@ Safety rules:
 - For rollback, dry-run first unless the user explicitly asks to apply immediately.
 `;
 
-const CLIENT_FILES: Record<InitClient, { file: string; content: string }> = {
-  claude: {
-    file: ".mcp.json",
-    content: `{
-  "mcpServers": {
-    "safefs": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@tekergul/safefs-mcp", "serve", "--root", "."],
-      "env": {}
-    }
-  }
-}
-`,
-  },
-  cursor: {
-    file: ".cursor/mcp.json",
-    content: `{
-  "mcpServers": {
-    "safefs": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@tekergul/safefs-mcp", "serve", "--root", "."],
-      "env": {}
-    }
-  }
-}
-`,
-  },
-  codex: {
-    file: ".codex/config.toml",
-    content: `[mcp_servers.safefs]
-enabled = true
-command = "npx"
-args = ["-y", "@tekergul/safefs-mcp", "serve", "--root", "."]
-startup_timeout_sec = 10
-tool_timeout_sec = 60
-default_tools_approval_mode = "prompt"
-enabled_tools = [
-  "safe_read_file",
-  "safe_write",
-  "safe_patch",
-  "safe_delete",
-  "safe_diff",
-  "safe_timeline",
-  "safe_rollback_time",
-  "safe_storage_status"
-]
-`,
-  },
-};
-
 export async function runInit(
   root: string,
   options: InitOptions = {}
 ): Promise<InitResult> {
+  const installMode: InitInstallMode = options.local ? "local" : "npm";
+  const commandSpec = createCommandSpec(options);
   const result: InitResult = {
     created: [],
     updated: [],
     skipped: [],
     clients: await selectClients(options),
+    installMode,
   };
 
   const safefsDir = path.join(root, ".safefs");
@@ -122,7 +91,7 @@ export async function runInit(
   await writeIfMissing(root, "AGENTS.md", AGENTS_MD, result, "agent rules");
 
   for (const client of result.clients) {
-    const target = CLIENT_FILES[client];
+    const target = createClientFile(client, commandSpec);
     await writeIfMissing(root, target.file, target.content, result, `${client} MCP config`);
   }
 
@@ -136,7 +105,7 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
   }
 
   if (options.yes) {
-    return ["codex", "cursor", "claude"];
+    return ["codex", "cursor", "claude", "gemini"];
   }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -146,9 +115,9 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
   const rl = createInterface({ input, output });
   try {
     const answer = await rl.question(
-      "Create MCP configs for which clients? [codex,cursor,claude] "
+      "Create MCP configs for which clients? [codex,cursor,claude,gemini] "
     );
-    const raw = answer.trim() || "codex,cursor,claude";
+    const raw = answer.trim() || "codex,cursor,claude,gemini";
     return parseClients(raw);
   } finally {
     rl.close();
@@ -156,7 +125,7 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
 }
 
 function parseClients(raw: string): InitClient[] {
-  const allowed = new Set<InitClient>(["codex", "cursor", "claude"]);
+  const allowed = new Set<InitClient>(["codex", "cursor", "claude", "gemini"]);
   return uniqueClients(
     raw
       .split(",")
@@ -167,6 +136,86 @@ function parseClients(raw: string): InitClient[] {
 
 function uniqueClients(clients: InitClient[]): InitClient[] {
   return [...new Set(clients)];
+}
+
+function createCommandSpec(options: InitOptions): McpCommandSpec {
+  if (!options.local) {
+    return {
+      command: "npx",
+      args: ["-y", PACKAGE_NAME, "serve", "--root", "."],
+    };
+  }
+
+  return {
+    command: "node",
+    args: [path.resolve(options.localCliPath ?? path.join("dist", "cli.js")), "serve", "--root", "."],
+  };
+}
+
+function createClientFile(client: InitClient, spec: McpCommandSpec): ClientFile {
+  switch (client) {
+    case "claude":
+      return {
+        file: ".mcp.json",
+        content: createJsonClientConfig(spec, { type: "stdio", env: {} }),
+      };
+    case "cursor":
+      return {
+        file: ".cursor/mcp.json",
+        content: createJsonClientConfig(spec, { type: "stdio", env: {} }),
+      };
+    case "codex":
+      return {
+        file: ".codex/config.toml",
+        content: createCodexConfig(spec),
+      };
+    case "gemini":
+      return {
+        file: ".gemini/settings.json",
+        content: createJsonClientConfig(spec, { timeout: 600000, trust: false }),
+      };
+  }
+}
+
+function createJsonClientConfig(
+  spec: McpCommandSpec,
+  extra: Record<string, unknown>
+): string {
+  return `${JSON.stringify(
+    {
+      mcpServers: {
+        safefs: {
+          ...extra,
+          command: spec.command,
+          args: spec.args,
+        },
+      },
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function createCodexConfig(spec: McpCommandSpec): string {
+  const args = spec.args.map((arg) => JSON.stringify(arg)).join(", ");
+  return `[mcp_servers.safefs]
+enabled = true
+command = ${JSON.stringify(spec.command)}
+args = [${args}]
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+default_tools_approval_mode = "prompt"
+enabled_tools = [
+  "safe_read_file",
+  "safe_write",
+  "safe_patch",
+  "safe_delete",
+  "safe_diff",
+  "safe_timeline",
+  "safe_rollback_time",
+  "safe_storage_status"
+]
+`;
 }
 
 async function writeIfMissing(
@@ -224,6 +273,7 @@ function printInitSummary(result: InitResult): void {
   console.log(
     `Created: ${result.created.length} | Updated: ${result.updated.length} | Skipped: ${result.skipped.length}`
   );
+  console.log(`Install mode: ${result.installMode === "local" ? "local checkout" : "npm package"}`);
 
   if (result.clients.length > 0) {
     console.log(`MCP configs: ${result.clients.join(", ")}`);

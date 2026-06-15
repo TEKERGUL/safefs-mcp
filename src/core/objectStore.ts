@@ -12,11 +12,6 @@ function assertValidHash(hash: string): void {
   }
 }
 
-function getObjectDir(root: string, hash: string): string {
-  const prefix = hash.slice(0, 2);
-  return path.join(root, ".safefs", "objects", prefix);
-}
-
 function getObjectFilePath(root: string, hash: string): string {
   const prefix = hash.slice(0, 2);
   return path.join(root, ".safefs", "objects", prefix, hash);

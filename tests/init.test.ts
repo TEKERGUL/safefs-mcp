@@ -80,18 +80,48 @@ describe("init", () => {
   it("init --yes with clients creates MCP config files", async () => {
     const result = await runInit(tmpDir, {
       yes: true,
-      clients: ["codex", "cursor", "claude"],
+      clients: ["codex", "cursor", "claude", "gemini"],
     });
 
-    expect(result.clients).toEqual(["codex", "cursor", "claude"]);
+    expect(result.clients).toEqual(["codex", "cursor", "claude", "gemini"]);
+    expect(result.installMode).toBe("npm");
 
     const codex = await fs.readFile(path.join(tmpDir, ".codex", "config.toml"), "utf-8");
     const cursor = await fs.readFile(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8");
     const claude = await fs.readFile(path.join(tmpDir, ".mcp.json"), "utf-8");
+    const gemini = await fs.readFile(path.join(tmpDir, ".gemini", "settings.json"), "utf-8");
 
     expect(codex).toContain("safe_diff");
     expect(cursor).toContain("@tekergul/safefs-mcp");
     expect(claude).toContain("@tekergul/safefs-mcp");
+    expect(gemini).toContain("\"mcpServers\"");
+    expect(gemini).toContain("\"safefs\"");
+  });
+
+  it("init --local writes MCP configs that run the local CLI", async () => {
+    const localCliPath = path.join(tmpDir, "dist", "cli.js");
+    const result = await runInit(tmpDir, {
+      yes: true,
+      local: true,
+      localCliPath,
+      clients: ["codex", "gemini"],
+    });
+
+    expect(result.installMode).toBe("local");
+
+    const codex = await fs.readFile(path.join(tmpDir, ".codex", "config.toml"), "utf-8");
+    const gemini = await fs.readFile(path.join(tmpDir, ".gemini", "settings.json"), "utf-8");
+
+    expect(codex).toContain('command = "node"');
+    expect(codex).toContain(JSON.stringify(localCliPath));
+    expect(codex).not.toContain("@tekergul/safefs-mcp");
+
+    const geminiConfig = JSON.parse(gemini) as {
+      mcpServers: { safefs: { command: string; args: string[] } };
+    };
+    expect(geminiConfig.mcpServers.safefs.command).toBe("node");
+    expect(geminiConfig.mcpServers.safefs.args[0]).toBe(localCliPath);
+    expect(gemini).not.toContain("@tekergul/safefs-mcp");
   });
 
   it("init does not overwrite existing MCP config files", async () => {
