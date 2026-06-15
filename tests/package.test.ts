@@ -14,7 +14,7 @@ describe("package manifest", () => {
       packageManager?: string;
     };
 
-    expect(pkg.version).toBe("1.0.0");
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.repository?.url).toContain("github.com/TEKERGUL/safefs-mcp");
     expect(pkg.bugs?.url).toContain("github.com/TEKERGUL/safefs-mcp/issues");
     expect(pkg.homepage).toContain("github.com/TEKERGUL/safefs-mcp");

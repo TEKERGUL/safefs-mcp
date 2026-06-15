@@ -16,9 +16,16 @@ SafeFS does not require Git commits, Docker, daemons, databases, or network serv
 
 ## Status
 
-SafeFS is published on GitHub and prepared for npm release as `@tekergul/safefs-mcp`.
+SafeFS is published on npm as `@tekergul/safefs-mcp`.
 
-Until the npm package is live, use a local checkout:
+Install from npm:
+
+```bash
+npx -y @tekergul/safefs-mcp init --yes --clients codex,cursor,claude,gemini
+npx -y @tekergul/safefs-mcp doctor
+```
+
+Or use a local GitHub checkout:
 
 ```bash
 git clone https://github.com/TEKERGUL/safefs-mcp.git
@@ -29,13 +36,6 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini
 node dist/cli.js doctor
 ```
 
-After npm publish:
-
-```bash
-npx -y @tekergul/safefs-mcp init --yes --clients codex,cursor,claude,gemini
-npx -y @tekergul/safefs-mcp doctor
-```
-
 ## Features
 
 - Roll back AI agent changes from `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
@@ -44,7 +44,7 @@ npx -y @tekergul/safefs-mcp doctor
 - Detect manual edits after agent changes and skip conflicts
 - Store touched content in a local SHA-256 object store
 - Support Codex, Cursor, Claude Code, Gemini CLI, Roo Code, Cline, and other MCP clients
-- Support npm package mode and local checkout mode for pre-publish installs
+- Support npm package mode and local checkout mode
 
 ## CLI
 

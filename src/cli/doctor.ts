@@ -9,6 +9,7 @@ import { SafeFSError, type SafeFSConfig } from "../types/index.js";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = "@tekergul/safefs-mcp";
+const PACKAGE_LATEST_URL = "https://registry.npmjs.org/@tekergul/safefs-mcp/latest";
 const MCP_CONFIG_FILES = [
   ".mcp.json",
   ".cursor/mcp.json",
@@ -366,14 +367,17 @@ async function checkPackageBinary(root: string): Promise<DoctorCheck> {
 }
 
 async function checkNpmPackageReachable(): Promise<DoctorCheck> {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
   try {
-    const { stdout } = await execFileAsync(
-      npmCommand,
-      ["view", PACKAGE_NAME, "version", "--silent"],
-      { timeout: 15000, windowsHide: true }
-    );
-    const version = stdout.trim();
+    const response = await fetch(PACKAGE_LATEST_URL, { signal: controller.signal });
+    if (!response.ok) throw new Error(`npm registry returned ${response.status}`);
+
+    const metadata: unknown = await response.json();
+    const version =
+      isRecord(metadata) && typeof metadata.version === "string" ? metadata.version : undefined;
+
     if (version) {
       return {
         name: "npm",
@@ -383,6 +387,8 @@ async function checkNpmPackageReachable(): Promise<DoctorCheck> {
     }
   } catch {
     // Report a warning below; npm reachability should not make local usage fail.
+  } finally {
+    clearTimeout(timeout);
   }
 
   return {

@@ -28,4 +28,4 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini
 - Gemini CLI tools are exposed with fully qualified names like `mcp_safefs_safe_write`.
 - Run `safefs doctor --gemini-smoke` to verify Gemini CLI can see the SafeFS MCP config.
 - The `safefs.yml` file is an example `.safefs.yml` project config.
-- If installing from a local GitHub checkout before npm publish, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.
+- If installing from a local GitHub checkout, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.
