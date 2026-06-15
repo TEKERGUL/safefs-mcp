@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A lightweight time machine for AI coding agents",
   "type": "module",
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@10.34.3",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -69,5 +69,10 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
