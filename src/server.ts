@@ -14,7 +14,7 @@ import { SafeFSError } from "./types/index.js";
 export function createServer(root: string): McpServer {
   const server = new McpServer({
     name: "safefs",
-    version: "0.1.0",
+    version: "1.0.0",
   });
 
   server.tool(
@@ -172,7 +172,7 @@ export function createServer(root: string): McpServer {
   return server;
 }
 
-function formatError(err: unknown): { content: Array<{ type: "text"; text: string }> } {
+function formatError(err: unknown): { content: Array<{ type: "text"; text: string }>; isError?: boolean } {
   if (err instanceof SafeFSError) {
     return {
       content: [

@@ -146,13 +146,27 @@ function diffLines(
     j++;
   }
 
-  const lastOldLineIdx = result.findLastIndex(l => l.startsWith("-") || l.startsWith(" "));
-  if (oldData.noTrailing && lastOldLineIdx !== -1 && result[lastOldLineIdx].startsWith("-")) {
+  let lastOldLineIdx = -1;
+  for (let k = result.length - 1; k >= 0; k--) {
+    const l = result[k] as string;
+    if (l.startsWith("-") || l.startsWith(" ")) {
+      lastOldLineIdx = k;
+      break;
+    }
+  }
+  if (oldData.noTrailing && lastOldLineIdx !== -1 && (result[lastOldLineIdx] as string).startsWith("-")) {
      result.splice(lastOldLineIdx + 1, 0, "\\ No newline at end of file");
   }
   
-  const lastNewLineIdx = result.findLastIndex(l => l.startsWith("+") || l.startsWith(" "));
-  if (newData.noTrailing && lastNewLineIdx !== -1 && result[lastNewLineIdx].startsWith("+")) {
+  let lastNewLineIdx = -1;
+  for (let k = result.length - 1; k >= 0; k--) {
+    const l = result[k] as string;
+    if (l.startsWith("+") || l.startsWith(" ")) {
+      lastNewLineIdx = k;
+      break;
+    }
+  }
+  if (newData.noTrailing && lastNewLineIdx !== -1 && (result[lastNewLineIdx] as string).startsWith("+")) {
      result.splice(lastNewLineIdx + 1, 0, "\\ No newline at end of file");
   }
 

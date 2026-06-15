@@ -13,6 +13,8 @@ Use SafeFS tools for file changes:
 - Use `safe_rollback_time` with `dryRun: true` before applying rollback.
 - Use `safe_storage_status` to inspect SafeFS storage.
 
+Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as `mcp_safefs_safe_write`.
+
 Safety rules:
 
 - Never access `.safefs/` internals directly.

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "safefs": {
+      "command": "npx",
+      "args": ["-y", "@tekergul/safefs-mcp", "serve", "--root", "."],
+      "timeout": 600000,
+      "trust": false
+    }
+  }
+}

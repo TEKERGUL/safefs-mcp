@@ -1,9 +1,20 @@
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { loadConfig } from "../config/loadConfig.js";
 import { resolveSafePath } from "../core/pathSafety.js";
 import { SafeFSError, type SafeFSConfig } from "../types/index.js";
+
+const execFileAsync = promisify(execFile);
+const PACKAGE_NAME = "@tekergul/safefs-mcp";
+const MCP_CONFIG_FILES = [
+  ".mcp.json",
+  ".cursor/mcp.json",
+  ".codex/config.toml",
+  ".gemini/settings.json",
+] as const;
 
 export interface DoctorCheck {
   name: string;
@@ -16,7 +27,21 @@ export interface DoctorResult {
   checks: DoctorCheck[];
 }
 
-export async function runDoctor(root: string): Promise<DoctorResult> {
+export interface DoctorOptions {
+  geminiSmoke?: boolean;
+  online?: boolean;
+}
+
+interface ParsedMcpConfig {
+  file: string;
+  command?: string;
+  args?: string[];
+}
+
+export async function runDoctor(
+  root: string,
+  options: DoctorOptions = {}
+): Promise<DoctorResult> {
   const checks: DoctorCheck[] = [];
 
   checks.push(checkNodeVersion());
@@ -42,7 +67,11 @@ export async function runDoctor(root: string): Promise<DoctorResult> {
   checks.push(await checkSafefsStorage(root));
   checks.push(await checkMandatoryProtection(root, config));
   checks.push(await checkMcpConfig(root));
+  const installModeCheck = await checkInstallMode(root);
+  if (installModeCheck) checks.push(installModeCheck);
   checks.push(await checkPackageBinary(root));
+  if (options.online) checks.push(await checkNpmPackageReachable());
+  if (options.geminiSmoke) checks.push(await checkGeminiSmoke(root));
 
   printDoctor(checks);
   return {
@@ -121,10 +150,9 @@ async function checkMandatoryProtection(
 }
 
 async function checkMcpConfig(root: string): Promise<DoctorCheck> {
-  const files = [".mcp.json", ".cursor/mcp.json", ".codex/config.toml"];
   const existing: string[] = [];
 
-  for (const file of files) {
+  for (const file of MCP_CONFIG_FILES) {
     try {
       await fs.access(path.join(root, file));
       existing.push(file);
@@ -144,11 +172,183 @@ async function checkMcpConfig(root: string): Promise<DoctorCheck> {
   return {
     name: "mcp-config",
     status: "warn",
-    message: "No MCP client config found. Run `safefs init --yes --clients codex,cursor,claude`.",
+    message: "No MCP client config found. Run `safefs init --yes --clients codex,cursor,claude,gemini`.",
   };
 }
 
+async function checkInstallMode(root: string): Promise<DoctorCheck | undefined> {
+  const configs = await readMcpConfigs(root);
+  if (configs.length === 0) return undefined;
+
+  const localConfigs = configs.filter(isLocalConfig);
+  const npmConfigs = configs.filter(isNpmConfig);
+
+  if (localConfigs.length > 0 && npmConfigs.length > 0) {
+    return {
+      name: "install-mode",
+      status: "warn",
+      message: "Mixed MCP install modes found. Re-run `safefs init` for one consistent mode.",
+    };
+  }
+
+  if (localConfigs.length > 0) {
+    const missing = await findMissingLocalCliPaths(localConfigs);
+    if (missing.length > 0) {
+      return {
+        name: "install-mode",
+        status: "warn",
+        message: `Local MCP config points to missing CLI path: ${missing.join(", ")}.`,
+      };
+    }
+
+    return {
+      name: "install-mode",
+      status: "pass",
+      message: "MCP configs use local checkout mode.",
+    };
+  }
+
+  if (npmConfigs.length > 0) {
+    return {
+      name: "install-mode",
+      status: "pass",
+      message: `MCP configs use npm package mode (${PACKAGE_NAME}). Use --online to verify npm reachability.`,
+    };
+  }
+
+  return {
+    name: "install-mode",
+    status: "warn",
+    message: "MCP config exists but SafeFS command mode could not be recognized.",
+  };
+}
+
+async function readMcpConfigs(root: string): Promise<ParsedMcpConfig[]> {
+  const configs: ParsedMcpConfig[] = [];
+
+  for (const file of MCP_CONFIG_FILES) {
+    const fullPath = path.join(root, file);
+    try {
+      const raw = await fs.readFile(fullPath, "utf-8");
+      configs.push(parseMcpConfig(file, raw));
+    } catch {
+      // Missing or unreadable client configs are handled by checkMcpConfig.
+    }
+  }
+
+  return configs;
+}
+
+function parseMcpConfig(file: string, raw: string): ParsedMcpConfig {
+  if (file.endsWith(".toml")) {
+    return parseTomlMcpConfig(file, raw);
+  }
+
+  return parseJsonMcpConfig(file, raw);
+}
+
+function parseJsonMcpConfig(file: string, raw: string): ParsedMcpConfig {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) return { file };
+
+    const servers = parsed.mcpServers;
+    if (!isRecord(servers)) return { file };
+
+    const safefs = servers.safefs;
+    if (!isRecord(safefs)) return { file };
+
+    return {
+      file,
+      command: typeof safefs.command === "string" ? safefs.command : undefined,
+      args: Array.isArray(safefs.args)
+        ? safefs.args.filter((arg): arg is string => typeof arg === "string")
+        : undefined,
+    };
+  } catch {
+    return { file };
+  }
+}
+
+function parseTomlMcpConfig(file: string, raw: string): ParsedMcpConfig {
+  const commandMatch = raw.match(/^command\s*=\s*("(?:\\.|[^"\\])*")/m);
+  const argsMatch = raw.match(/^args\s*=\s*\[([^\]]*)\]/m);
+
+  return {
+    file,
+    command: commandMatch?.[1] ? parseQuotedString(commandMatch[1]) : undefined,
+    args: argsMatch?.[1] ? parseTomlStringArray(argsMatch[1]) : undefined,
+  };
+}
+
+function parseTomlStringArray(raw: string): string[] {
+  const matches = raw.match(/"(?:\\.|[^"\\])*"/g) ?? [];
+  return matches
+    .map((match) => parseQuotedString(match))
+    .filter((value): value is string => value !== undefined);
+}
+
+function parseQuotedString(raw: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNpmConfig(config: ParsedMcpConfig): boolean {
+  return config.command === "npx" && (config.args ?? []).includes(PACKAGE_NAME);
+}
+
+function isLocalConfig(config: ParsedMcpConfig): boolean {
+  return config.command === "node" && findLocalCliPath(config) !== undefined;
+}
+
+function findLocalCliPath(config: ParsedMcpConfig): string | undefined {
+  return (config.args ?? []).find((arg) => /(^|[\\/])dist[\\/]cli\.js$/i.test(arg));
+}
+
+async function findMissingLocalCliPaths(configs: ParsedMcpConfig[]): Promise<string[]> {
+  const missing: string[] = [];
+
+  for (const config of configs) {
+    const cliPath = findLocalCliPath(config);
+    if (!cliPath) continue;
+
+    try {
+      await fs.access(cliPath, constants.R_OK);
+    } catch {
+      missing.push(cliPath);
+    }
+  }
+
+  return [...new Set(missing)];
+}
+
 async function checkPackageBinary(root: string): Promise<DoctorCheck> {
+  try {
+    const raw = await fs.readFile(path.join(root, "package.json"), "utf-8");
+    const pkg: unknown = JSON.parse(raw);
+    if (!isRecord(pkg) || pkg.name !== PACKAGE_NAME) {
+      return {
+        name: "binary",
+        status: "pass",
+        message: "Package binary check skipped outside the SafeFS source checkout.",
+      };
+    }
+  } catch {
+    return {
+      name: "binary",
+      status: "pass",
+      message: "Package binary check skipped outside the SafeFS source checkout.",
+    };
+  }
+
   try {
     await fs.access(path.join(root, "dist", "cli.js"));
     return {
@@ -161,6 +361,67 @@ async function checkPackageBinary(root: string): Promise<DoctorCheck> {
       name: "binary",
       status: "warn",
       message: "dist/cli.js is missing. Run `pnpm build` before publishing.",
+    };
+  }
+}
+
+async function checkNpmPackageReachable(): Promise<DoctorCheck> {
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  try {
+    const { stdout } = await execFileAsync(
+      npmCommand,
+      ["view", PACKAGE_NAME, "version", "--silent"],
+      { timeout: 15000, windowsHide: true }
+    );
+    const version = stdout.trim();
+    if (version) {
+      return {
+        name: "npm",
+        status: "pass",
+        message: `${PACKAGE_NAME} is reachable on npm at version ${version}.`,
+      };
+    }
+  } catch {
+    // Report a warning below; npm reachability should not make local usage fail.
+  }
+
+  return {
+    name: "npm",
+    status: "warn",
+    message: `${PACKAGE_NAME} is not reachable from npm yet. Use \`safefs init --local\` for local checkout installs.`,
+  };
+}
+
+async function checkGeminiSmoke(root: string): Promise<DoctorCheck> {
+  const geminiCommand = process.platform === "win32" ? "cmd.exe" : "gemini";
+  const geminiArgs =
+    process.platform === "win32" ? ["/d", "/s", "/c", "gemini.cmd", "mcp", "list"] : ["mcp", "list"];
+  try {
+    const { stdout, stderr } = await execFileAsync(geminiCommand, geminiArgs, {
+      cwd: root,
+      timeout: 15000,
+      windowsHide: true,
+    });
+    const output = `${stdout}\n${stderr}`;
+    if (output.toLowerCase().includes("safefs")) {
+      return {
+        name: "gemini",
+        status: "pass",
+        message: "Gemini CLI sees a SafeFS MCP server config.",
+      };
+    }
+
+    return {
+      name: "gemini",
+      status: "warn",
+      message: "Gemini CLI ran, but `gemini mcp list` did not show SafeFS.",
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "unknown error";
+    return {
+      name: "gemini",
+      status: "warn",
+      message: `Gemini CLI smoke check could not run (${reason}). Install/authenticate Gemini CLI, then retry \`safefs doctor --gemini-smoke\`.`,
     };
   }
 }
