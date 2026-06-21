@@ -284,5 +284,6 @@ function printInitSummary(result: InitResult): void {
   console.log("");
   console.log("Next:");
   console.log("  safefs doctor");
+  console.log("  safefs watch");
   console.log("  safefs timeline --since 1h");
 }

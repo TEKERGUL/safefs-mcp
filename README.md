@@ -10,7 +10,7 @@
 
 A lightweight time machine for AI coding agents.
 
-AI agents can edit a lot of files before you notice a mistake. SafeFS wraps agent file operations with before-change snapshots, an append-only timeline, conflict checks, rollback, and diff previews.
+AI agents can edit a lot of files before you notice a mistake. SafeFS records before-change snapshots, an append-only timeline, conflict checks, rollback, and diff previews.
 
 SafeFS does not require Git commits, Docker, daemons, databases, or network services. It stores only touched content locally.
 
@@ -42,6 +42,7 @@ node dist/cli.js doctor
 - Preview rollback as unified diffs before applying changes
 - Restore one file without resetting the whole project
 - Detect manual edits after agent changes and skip conflicts
+- Watch native file edits from Claude Code, Codex, Antigravity, Cursor, editors, and terminals
 - Store touched content in a local SHA-256 object store
 - Support Codex, Cursor, Claude Code, Gemini CLI, Roo Code, Cline, and other MCP clients
 - Support npm package mode and local checkout mode
@@ -55,6 +56,7 @@ safefs doctor --gemini-smoke
 safefs timeline --since 3h
 safefs diff --since 1h
 safefs diff --since 1d --path src/auth/login.ts
+safefs watch
 safefs rollback 1h
 safefs rollback 1h --yes
 safefs storage
@@ -62,6 +64,23 @@ safefs storage
 
 Rollback defaults to dry-run. Use `--yes` only after reviewing the plan or diff.
 
+## Watch Mode
+
+For clients that prefer their own native file tools, run SafeFS as a lightweight workspace guard:
+
+```bash
+safefs watch
+```
+
+Watch mode is client-agnostic. It builds a local baseline, ignores protected paths such as `.git/`, `.safefs/`, `.env*`, `node_modules/`, `dist/`, and `build/`, then records committed timeline events when normal file writes, creates, or deletes happen on disk.
+
+Use this when Claude Code, Codex, Antigravity, Cursor, or another editor writes files directly instead of calling SafeFS MCP write tools. Keep the watcher running while the agent works, then use the same rollback commands:
+
+```bash
+safefs diff --since 10m
+safefs rollback 10m
+safefs rollback 10m --yes
+```
 ## MCP Tools
 
 SafeFS exposes:

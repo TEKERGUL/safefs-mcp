@@ -8,6 +8,7 @@ import { runRollback } from "./cli/rollback.js";
 import { runDiff } from "./cli/diff.js";
 import { runStorage } from "./cli/storage.js";
 import { runDoctor } from "./cli/doctor.js";
+import { runWatch } from "./cli/watch.js";
 import { SafeFSError } from "./types/index.js";
 
 const args = process.argv.slice(2);
@@ -49,6 +50,9 @@ async function main(): Promise<void> {
     case "doctor":
       await handleDoctor();
       break;
+    case "watch":
+      await handleWatch();
+      break;
     default:
       console.error(`Unknown command: ${command}`);
       console.error('Run "safefs --help" for usage.');
@@ -66,6 +70,7 @@ Usage:
   safefs rollback <time> [options]   Rollback agent changes
   safefs diff --since <time>         Preview rollback as unified diffs
   safefs doctor                      Check SafeFS setup health
+  safefs watch                       Track native file edits from any client
   safefs storage                     Show storage status
 
 Init options:
@@ -76,6 +81,10 @@ Init options:
 Doctor options:
   --online                   Check whether the npm package is reachable
   --gemini-smoke             Check whether Gemini CLI can see the SafeFS MCP config
+
+Watch options:
+  --interval <ms>            Polling interval (default: 1000)
+  --once                     Build baseline and exit
 
 Global options:
   --root <path>              Project root (defaults to current directory)
@@ -95,6 +104,7 @@ Examples:
   node dist/cli.js init --local --yes --clients gemini
   safefs timeline --since 3h
   safefs diff --since 1h
+  safefs watch
   safefs rollback 1h
   safefs rollback 1h --yes
   safefs rollback 3h --path src/auth/login.ts --yes
@@ -184,6 +194,15 @@ async function handleDoctor(): Promise<void> {
   }
 }
 
+async function handleWatch(): Promise<void> {
+  const root = resolveRoot();
+  const interval = parseOptionalNumberFlag("--interval");
+  await runWatch(root, {
+    intervalMs: interval,
+    once: args.includes("--once"),
+  });
+}
+
 function resolveRoot(): string {
   const rootFlag = getFlag("--root");
   if (rootFlag) {
@@ -200,6 +219,18 @@ function getFlag(name: string): string | undefined {
   const index = args.indexOf(name);
   if (index === -1) return undefined;
   return args[index + 1];
+}
+
+function parseOptionalNumberFlag(name: string): number | undefined {
+  const value = getFlag(name);
+  if (value === undefined) return undefined;
+
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`Error: ${name} must be a positive number.`);
+    process.exit(1);
+  }
+  return parsed;
 }
 
 function parseClients(
