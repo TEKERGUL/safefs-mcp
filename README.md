@@ -53,9 +53,14 @@ safefs diff --since 10m
 safefs rollback 10m
 safefs rollback 10m --yes
 safefs storage
+safefs prune --days 30
+safefs prune --days 30 --yes
+safefs gc
+safefs gc --yes
 ```
 
 Rollback defaults to dry-run. Use `--yes` only after reviewing the plan or diff.
+Maintenance commands also default to dry-run. `prune` removes old timeline events and `gc` removes unreferenced objects only when `--yes` is provided.
 
 ## Guard And Watch Mode
 
@@ -112,6 +117,7 @@ If a file changed after the recorded edit, rollback skips it and reports the exp
 - Symlink escapes are blocked by default
 - Binary and large files are skipped by watch mode
 - Timeline events are append-only
+- Timeline pruning and object garbage collection are explicit, dry-run-first maintenance commands
 
 See [SECURITY.md](SECURITY.md).
 
@@ -188,7 +194,7 @@ enabled_tools = [
 
 - Directory deletion is intentionally blocked in 1.1
 - Function-level and exact line-range rollback are planned for later releases
-- Timeline pruning and object compression are not enabled in 1.1
+- Object compression is not enabled in 1.1
 - SafeFS complements Git; it does not replace commits, branches, or backups
 
 ## Development

@@ -7,7 +7,7 @@ import {
   snapshotFileForExternalTracking,
 } from "./externalChangeRecorder.js";
 import { resolveSafePath } from "./pathSafety.js";
-import { isPathSuppressed } from "./suppression.js";
+import { loadSuppressionState, isPathSuppressedBy } from "./suppression.js";
 import type { ExternalChangeResult, FileSnapshot } from "./externalChangeRecorder.js";
 import type { SafeFSConfig } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
@@ -44,6 +44,36 @@ interface WatchMatchers {
   exclude: Array<(value: string) => boolean>;
 }
 
+let cachedMatchers: WatchMatchers | null = null;
+let cachedMatcherKey: string | null = null;
+
+async function getOrCreateWatchMatchers(root: string, config: SafeFSConfig): Promise<WatchMatchers> {
+  const patterns = [...config.watch.exclude];
+  let gitignoreContent = "";
+  if (config.watch.respectGitignore) {
+    try {
+      gitignoreContent = await fs.readFile(path.join(root, ".gitignore"), "utf-8");
+    } catch { /* no gitignore */ }
+  }
+
+  const key = JSON.stringify(patterns) + "\0" + gitignoreContent;
+  if (cachedMatcherKey === key && cachedMatchers) {
+    return cachedMatchers;
+  }
+
+  const gitPatterns = gitignoreContent
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#") && !l.startsWith("!"));
+
+  const allPatterns = [...patterns, ...gitPatterns];
+  cachedMatchers = {
+    exclude: allPatterns.flatMap((p) => createMatchersForPattern(p)),
+  };
+  cachedMatcherKey = key;
+  return cachedMatchers;
+}
+
 export async function scanWorkspaceForWatch(options: {
   root: string;
   config: SafeFSConfig;
@@ -53,7 +83,7 @@ export async function scanWorkspaceForWatch(options: {
   const root = path.resolve(options.root);
   const snapshot: WatchSnapshot = new Map();
   const skippedDetails: WatchSkipDetail[] = [];
-  const matchers = await createWatchMatchers(root, options.config);
+  const matchers = await getOrCreateWatchMatchers(root, options.config);
   const budget = {
     usedBytes: 0,
     maxBytes: options.config.watch.maxSnapshotBytesMB * 1024 * 1024,
@@ -100,6 +130,7 @@ export async function detectWorkspaceChanges(options: {
   const nextPending: WatchPendingChanges = new Map();
   const stableChanges: WatchPendingChange[] = [];
   const nextSnapshot: WatchSnapshot = new Map(options.previous);
+  const suppression = await loadSuppressionState(options.root);
 
   for (const filePath of [...paths].sort()) {
     const before = options.previous.get(filePath) ?? null;
@@ -109,7 +140,7 @@ export async function detectWorkspaceChanges(options: {
       continue;
     }
 
-    if (await isPathSuppressed(options.root, filePath)) {
+    if (isPathSuppressedBy(suppression, filePath)) {
       applySnapshotChange(nextSnapshot, filePath, after);
       continue;
     }
@@ -224,7 +255,18 @@ async function scanDirectory(options: {
   budget: { usedBytes: number; maxBytes: number };
   dryRun?: boolean;
 }): Promise<void> {
-  const entries = await fs.readdir(options.directory, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await fs.readdir(options.directory, { withFileTypes: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EPERM" || code === "EACCES" || code === "EBUSY" || code === "ENOENT") {
+      const relativePath = toPosixRelative(options.root, options.directory);
+      if (relativePath) addSkip(options.skippedDetails, relativePath, `error:${code.toLowerCase()}`);
+      return;
+    }
+    throw err;
+  }
 
   for (const entry of entries) {
     const absolutePath = path.join(options.directory, entry.name);
@@ -291,6 +333,11 @@ async function scanDirectory(options: {
         addSkip(options.skippedDetails, relativePath, (err as SafeFSError).code.toLowerCase());
         continue;
       }
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES" || code === "EBUSY" || code === "ENOENT") {
+        addSkip(options.skippedDetails, relativePath, `error:${code.toLowerCase()}`);
+        continue;
+      }
       throw err;
     }
   }
@@ -319,28 +366,6 @@ async function shouldSkipPath(
   }
 }
 
-async function createWatchMatchers(root: string, config: SafeFSConfig): Promise<WatchMatchers> {
-  const patterns = [...config.watch.exclude];
-  if (config.watch.respectGitignore) {
-    patterns.push(...(await readGitignorePatterns(root)));
-  }
-
-  return {
-    exclude: patterns.flatMap((pattern) => createMatchersForPattern(pattern)),
-  };
-}
-
-async function readGitignorePatterns(root: string): Promise<string[]> {
-  try {
-    const content = await fs.readFile(path.join(root, ".gitignore"), "utf-8");
-    return content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && !line.startsWith("!"));
-  } catch {
-    return [];
-  }
-}
 
 function createMatchersForPattern(pattern: string): Array<(value: string) => boolean> {
   const normalized = pattern.split(path.sep).join("/");

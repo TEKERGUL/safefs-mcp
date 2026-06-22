@@ -10,6 +10,9 @@ import { runStorage } from "./cli/storage.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runWatch } from "./cli/watch.js";
 import { runGuard } from "./cli/guard.js";
+import { pruneTimeline } from "./core/timelinePruning.js";
+import { collectGarbage } from "./core/objectGC.js";
+import { loadConfig } from "./config/loadConfig.js";
 import { SafeFSError } from "./types/index.js";
 
 const rawArgs = process.argv.slice(2);
@@ -59,6 +62,12 @@ async function main(): Promise<void> {
     case "guard":
       await handleGuard();
       break;
+    case "prune":
+      await handlePrune();
+      break;
+    case "gc":
+      await handleGC();
+      break;
     default:
       console.error(`Unknown command: ${command}`);
       console.error('Run "safefs --help" for usage.');
@@ -78,6 +87,8 @@ Usage:
   safefs doctor                      Check SafeFS setup health
   safefs watch                       Track native file edits from any client
   safefs guard -- <command>          Run a command with SafeFS watching native edits
+  safefs prune [--days N] [--yes]   Preview or remove old timeline events
+  safefs gc [--yes]                 Preview or remove unreferenced objects
   safefs storage                     Show storage status
 
 Init options:
@@ -219,6 +230,55 @@ async function handleGuard(): Promise<void> {
   const commandArgs = separatorIndex === -1 ? args.slice(1) : args.slice(separatorIndex + 1);
   const exitCode = await runGuard(root, commandArgs);
   process.exitCode = exitCode;
+}
+
+async function handlePrune(): Promise<void> {
+  const root = resolveRoot();
+  const config = await loadConfig(root);
+  const daysFlag = getFlag("--days");
+  const retentionDays = daysFlag ? parseInt(daysFlag, 10) : config.storage.retentionDays;
+  const dryRun = !args.includes("--yes") || args.includes("--dry-run");
+
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    console.error("Error: --days must be a positive number.");
+    process.exit(1);
+  }
+
+  console.log(`${dryRun ? "Previewing" : "Pruning"} timeline events older than ${retentionDays} days...`);
+  const result = await pruneTimeline(root, { retentionDays, dryRun });
+  console.log(`${dryRun ? "Would prune" : "Pruned"}: ${result.pruned} | Retained: ${result.retained}`);
+  if (dryRun && result.pruned > 0) {
+    console.log("Run with --yes to apply.");
+  }
+
+  if (args.includes("--gc")) {
+    await handleGC();
+  }
+}
+
+async function handleGC(): Promise<void> {
+  const root = resolveRoot();
+  const dryRun = !args.includes("--yes") || args.includes("--dry-run");
+  console.log(`${dryRun ? "Previewing" : "Running"} object store garbage collection...`);
+  const result = await collectGarbage(root, { dryRun });
+  console.log(
+    `${dryRun ? "Would delete" : "Deleted"}: ${result.deleted} | Retained: ${result.retained} | Young skipped: ${result.skippedYoung} | ${dryRun ? "Would free" : "Freed"}: ${formatGCBytes(result.freedBytes)}`
+  );
+  if (dryRun && result.deleted > 0) {
+    console.log("Run with --yes to apply.");
+  }
+}
+
+function formatGCBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function resolveRoot(): string {

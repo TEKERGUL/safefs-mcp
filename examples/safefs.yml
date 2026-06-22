@@ -45,6 +45,8 @@ rollback:
 storage:
   objectCompression: false
   retentionWarningDays: 30
+  retentionDays: 30
+  autoprune: false
 
 watch:
   intervalMs: 1000

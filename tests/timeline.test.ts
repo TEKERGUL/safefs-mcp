@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { appendEvent, queryEvents, generateEventId } from "../src/core/timeline.js";
+import { appendEvent, queryEvents, queryRecentEvents, generateEventId } from "../src/core/timeline.js";
 import type { TimelineEvent } from "../src/types/index.js";
 
 let tmpDir: string;
@@ -166,5 +166,30 @@ describe("timeline", () => {
     const events = await queryEvents(freshDir, {});
     expect(events).toEqual([]);
     await fs.rm(freshDir, { recursive: true, force: true });
+  });
+
+  it("queryRecentEvents reads beyond the last tail chunk when needed", async () => {
+    const target = makeEvent({
+      path: "target.txt",
+      timestamp: new Date().toISOString(),
+    });
+    await appendEvent(tmpDir, target);
+
+    for (let i = 0; i < 260; i++) {
+      await appendEvent(
+        tmpDir,
+        makeEvent({
+          path: `padding-${i}.txt`,
+          reason: "x".repeat(600),
+          timestamp: new Date().toISOString(),
+        })
+      );
+    }
+
+    const events = await queryRecentEvents(tmpDir, {
+      since: new Date(Date.now() - 60_000),
+      path: "target.txt",
+    });
+    expect(events.some((event) => event.eventId === target.eventId)).toBe(true);
   });
 });

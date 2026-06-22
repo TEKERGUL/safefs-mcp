@@ -79,6 +79,8 @@ export interface SafeFSConfig {
   storage: {
     objectCompression: boolean;
     retentionWarningDays: number;
+    retentionDays: number;
+    autoprune: boolean;
   };
   watch: {
     intervalMs: number;

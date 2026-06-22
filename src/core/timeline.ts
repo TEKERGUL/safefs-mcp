@@ -126,6 +126,114 @@ function matchesFilter(event: TimelineEvent, filter: TimelineFilter): boolean {
   return true;
 }
 
+export async function queryRecentEvents(
+  root: string,
+  filter: { since: Date; path?: string }
+): Promise<TimelineEvent[]> {
+  const filePath = getTimelinePath(root);
+  const CHUNK_SIZE = 64 * 1024;
+
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+
+  if (stat.size === 0) return [];
+
+  const fileHandle = await fs.open(filePath, "r");
+  try {
+    const results: TimelineEvent[] = [];
+    let position = stat.size;
+    let carry = "";
+    let reachedCutoff = false;
+
+    while (position > 0 && !reachedCutoff) {
+      const readSize = Math.min(CHUNK_SIZE, position);
+      position -= readSize;
+
+      const buf = Buffer.alloc(readSize);
+      await fileHandle.read(buf, 0, readSize, position);
+
+      const text = buf.toString("utf-8") + carry;
+      const lines = text.split("\n");
+      carry = position > 0 ? lines.shift() ?? "" : "";
+
+      for (let index = lines.length - 1; index >= 0; index--) {
+        const trimmed = lines[index]!.trim();
+        if (!trimmed) continue;
+
+        try {
+          const event = JSON.parse(trimmed) as TimelineEvent;
+          if (new Date(event.timestamp) < filter.since) {
+            reachedCutoff = true;
+            break;
+          }
+          if (filter.path && event.path !== filter.path) continue;
+          results.push(event);
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    return results.reverse();
+  } finally {
+    await fileHandle.close();
+  }
+}
+
+export async function getTimelineBounds(
+  root: string
+): Promise<{ oldest?: string; newest?: string }> {
+  const filePath = getTimelinePath(root);
+
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw err;
+  }
+
+  if (stat.size === 0) return {};
+
+  const fileHandle = await fs.open(filePath, "r");
+  try {
+    const HEAD_SIZE = 4096;
+    const headBuf = Buffer.alloc(Math.min(HEAD_SIZE, stat.size));
+    await fileHandle.read(headBuf, 0, headBuf.length, 0);
+    const firstLine = headBuf.toString("utf-8").split("\n")[0]?.trim();
+
+    const TAIL_SIZE = 4096;
+    const tailStart = Math.max(0, stat.size - TAIL_SIZE);
+    const tailBuf = Buffer.alloc(Math.min(TAIL_SIZE, stat.size));
+    await fileHandle.read(tailBuf, 0, tailBuf.length, tailStart);
+    const tailLines = tailBuf.toString("utf-8").split("\n").filter((l) => l.trim());
+    const lastLine = tailLines[tailLines.length - 1]?.trim();
+
+    let oldest: string | undefined;
+    let newest: string | undefined;
+
+    if (firstLine) {
+      try {
+        oldest = (JSON.parse(firstLine) as TimelineEvent).timestamp;
+      } catch { /* corrupted first line */ }
+    }
+    if (lastLine) {
+      try {
+        newest = (JSON.parse(lastLine) as TimelineEvent).timestamp;
+      } catch { /* corrupted last line */ }
+    }
+
+    return { oldest, newest };
+  } finally {
+    await fileHandle.close();
+  }
+}
+
 export async function getEventCount(root: string): Promise<number> {
   const filePath = getTimelinePath(root);
 

@@ -31,8 +31,15 @@ export async function createRollbackSuppression(options: {
 
 export async function isPathSuppressed(root: string, relativePath: string): Promise<boolean> {
   const suppression = await readSuppression(root);
-  if (!suppression) return false;
+  return isPathSuppressedBy(suppression, relativePath);
+}
 
+export async function loadSuppressionState(root: string): Promise<SuppressionFile | null> {
+  return readSuppression(root);
+}
+
+export function isPathSuppressedBy(suppression: SuppressionFile | null, relativePath: string): boolean {
+  if (!suppression) return false;
   return suppression.paths.includes("*") || suppression.paths.includes(relativePath);
 }
 

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import picomatch from "picomatch";
 import { MANDATORY_PROTECTED_PATTERNS } from "../config/defaultConfig.js";
@@ -101,6 +102,28 @@ function checkProtectedPatterns(
     }
   }
   return false;
+}
+
+export async function openSafePath(options: {
+  root: string;
+  requestedPath: string;
+  config: SafeFSConfig;
+  flags: number;
+  mode?: number;
+}): Promise<{ fd: fs.FileHandle; resolved: ResolvedPath }> {
+  const resolved = await resolveSafePath({
+    root: options.root,
+    requestedPath: options.requestedPath,
+    config: options.config,
+  });
+
+  let openFlags = options.flags;
+  if (process.platform !== "win32" && !options.config.workspace.followSymlinks) {
+    openFlags |= constants.O_NOFOLLOW;
+  }
+
+  const fd = await fs.open(resolved.absolutePath, openFlags, options.mode);
+  return { fd, resolved };
 }
 
 async function checkSymlinkEscape(

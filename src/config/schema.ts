@@ -28,6 +28,8 @@ export const SafeFSConfigSchema = z.object({
     .object({
       objectCompression: z.boolean().default(false),
       retentionWarningDays: z.number().positive().max(3650).default(30),
+      retentionDays: z.number().positive().max(3650).default(30),
+      autoprune: z.boolean().default(false),
     })
     .default({}),
   watch: z

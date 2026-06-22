@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import { saveObject } from "./objectStore.js";
 import { sha256Buffer } from "./hash.js";
-import { appendEvent, generateEventId, queryEvents } from "./timeline.js";
+import { appendEvent, generateEventId, queryRecentEvents } from "./timeline.js";
 import { resolveSafePath } from "./pathSafety.js";
 import { fileExists, isDirectory } from "./workspace.js";
+import { fileMutexes } from "./mutex.js";
 import type { Operation, RiskLevel, SafeFSConfig, TimelineEvent } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -105,44 +106,49 @@ export async function recordExternalChange(options: {
     };
   }
 
-  const operation = getExternalOperation(before, after);
-  if (await hasDuplicateRecentEvent({ ...options, path: resolved.relativePath, operation })) {
+  const release = await fileMutexes.acquire(resolved.relativePath);
+  try {
+    const operation = getExternalOperation(before, after);
+    if (await hasDuplicateRecentEvent({ ...options, path: resolved.relativePath, operation })) {
+      return {
+        recorded: false,
+        path: resolved.relativePath,
+        operation,
+        reason: "Recent equivalent timeline event already exists.",
+      };
+    }
+
+    const risk = getExternalRisk(operation, before);
+    const eventId = generateEventId();
+    const baseEvent: TimelineEvent = {
+      eventId,
+      sessionId,
+      timestamp: new Date().toISOString(),
+      actor: "agent",
+      tool,
+      operation,
+      path: resolved.relativePath,
+      beforeHash: before?.hash ?? null,
+      afterHash: after?.hash ?? null,
+      beforeObject: before?.object ?? null,
+      afterObject: after?.object ?? null,
+      risk,
+      reason,
+      committed: false,
+      status: "pending",
+    };
+
+    await appendCommittedPair(root, baseEvent);
+
     return {
-      recorded: false,
+      recorded: true,
+      eventId,
       path: resolved.relativePath,
       operation,
-      reason: "Recent equivalent timeline event already exists.",
     };
+  } finally {
+    release();
   }
-
-  const risk = getExternalRisk(operation, before);
-  const eventId = generateEventId();
-  const baseEvent: TimelineEvent = {
-    eventId,
-    sessionId,
-    timestamp: new Date().toISOString(),
-    actor: "agent",
-    tool,
-    operation,
-    path: resolved.relativePath,
-    beforeHash: before?.hash ?? null,
-    afterHash: after?.hash ?? null,
-    beforeObject: before?.object ?? null,
-    afterObject: after?.object ?? null,
-    risk,
-    reason,
-    committed: false,
-    status: "pending",
-  };
-
-  await appendCommittedPair(root, baseEvent);
-
-  return {
-    recorded: true,
-    eventId,
-    path: resolved.relativePath,
-    operation,
-  };
 }
 
 export async function recordExternalMove(options: {
@@ -159,56 +165,61 @@ export async function recordExternalMove(options: {
   const from = await resolveSafePath({ root: options.root, requestedPath: options.fromPath, config: options.config });
   const to = await resolveSafePath({ root: options.root, requestedPath: options.toPath, config: options.config });
 
-  if (
-    await hasDuplicateRecentEvent({
-      root: options.root,
-      path: to.relativePath,
-      before: options.snapshot,
-      after: options.snapshot,
+  const release = await fileMutexes.acquire(to.relativePath);
+  try {
+    if (
+      await hasDuplicateRecentEvent({
+        root: options.root,
+        path: to.relativePath,
+        before: options.snapshot,
+        after: options.snapshot,
+        operation: "move",
+        config: options.config,
+        dedupeWindowMs: options.dedupeWindowMs,
+      })
+    ) {
+      return {
+        recorded: false,
+        path: to.relativePath,
+        operation: "move",
+        reason: "Recent equivalent timeline event already exists.",
+      };
+    }
+
+    const eventId = generateEventId();
+    const baseEvent: TimelineEvent = {
+      eventId,
+      sessionId: options.sessionId,
+      timestamp: new Date().toISOString(),
+      actor: "agent",
+      tool: options.tool,
       operation: "move",
-      config: options.config,
-      dedupeWindowMs: options.dedupeWindowMs,
-    })
-  ) {
-    return {
-      recorded: false,
       path: to.relativePath,
-      operation: "move",
-      reason: "Recent equivalent timeline event already exists.",
+      beforeHash: options.snapshot.hash,
+      afterHash: options.snapshot.hash,
+      beforeObject: options.snapshot.object,
+      afterObject: options.snapshot.object,
+      move: {
+        fromPath: from.relativePath,
+        toPath: to.relativePath,
+      },
+      risk: "medium",
+      reason: options.reason,
+      committed: false,
+      status: "pending",
     };
+
+    await appendCommittedPair(options.root, baseEvent);
+
+    return {
+      recorded: true,
+      eventId,
+      path: to.relativePath,
+      operation: "move",
+    };
+  } finally {
+    release();
   }
-
-  const eventId = generateEventId();
-  const baseEvent: TimelineEvent = {
-    eventId,
-    sessionId: options.sessionId,
-    timestamp: new Date().toISOString(),
-    actor: "agent",
-    tool: options.tool,
-    operation: "move",
-    path: to.relativePath,
-    beforeHash: options.snapshot.hash,
-    afterHash: options.snapshot.hash,
-    beforeObject: options.snapshot.object,
-    afterObject: options.snapshot.object,
-    move: {
-      fromPath: from.relativePath,
-      toPath: to.relativePath,
-    },
-    risk: "medium",
-    reason: options.reason,
-    committed: false,
-    status: "pending",
-  };
-
-  await appendCommittedPair(options.root, baseEvent);
-
-  return {
-    recorded: true,
-    eventId,
-    path: to.relativePath,
-    operation: "move",
-  };
 }
 
 async function appendCommittedPair(root: string, baseEvent: TimelineEvent): Promise<void> {
@@ -231,7 +242,7 @@ async function hasDuplicateRecentEvent(options: {
   dedupeWindowMs?: number;
 }): Promise<boolean> {
   const since = new Date(Date.now() - (options.dedupeWindowMs ?? 5000));
-  const events = await queryEvents(options.root, { since, path: options.path });
+  const events = await queryRecentEvents(options.root, { since, path: options.path });
 
   return events.some((event) => {
     if (!event.committed) return false;

@@ -1,14 +1,38 @@
 export class Mutex {
-  private queue: Array<() => void> = [];
+  private queue: Array<{ grant: () => void; cancel: () => void }> = [];
   private locked = false;
 
-  async acquire(): Promise<() => void> {
-    return new Promise((resolve) => {
-      if (!this.locked) {
+  async acquire(timeoutMs?: number): Promise<() => void> {
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      const grant = () => {
+        if (timer) clearTimeout(timer);
         this.locked = true;
         resolve(this.release.bind(this));
-      } else {
-        this.queue.push(() => resolve(this.release.bind(this)));
+      };
+
+      if (!this.locked) {
+        grant();
+        return;
+      }
+
+      const entry = {
+        grant,
+        cancel: () => {
+          reject(new Error(`Mutex acquire timeout after ${timeoutMs}ms`));
+        },
+      };
+      this.queue.push(entry);
+
+      if (timeoutMs !== undefined && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          const idx = this.queue.indexOf(entry);
+          if (idx !== -1) {
+            this.queue.splice(idx, 1);
+            entry.cancel();
+          }
+        }, timeoutMs);
       }
     });
   }
@@ -16,7 +40,7 @@ export class Mutex {
   private release() {
     if (this.queue.length > 0) {
       const next = this.queue.shift()!;
-      next();
+      next.grant();
     } else {
       this.locked = false;
     }
@@ -27,16 +51,18 @@ export class Mutex {
   }
 }
 
+const DEFAULT_PATH_MUTEX_TIMEOUT_MS = 30_000;
+
 export class PathMutexes {
   private mutexes = new Map<string, Mutex>();
 
-  async acquire(path: string): Promise<() => void> {
+  async acquire(path: string, timeoutMs?: number): Promise<() => void> {
     if (!this.mutexes.has(path)) {
       this.mutexes.set(path, new Mutex());
     }
     const mutex = this.mutexes.get(path)!;
-    const release = await mutex.acquire();
-    
+    const release = await mutex.acquire(timeoutMs ?? DEFAULT_PATH_MUTEX_TIMEOUT_MS);
+
     return () => {
       release();
       if (!mutex.isLocked) {

@@ -40,8 +40,8 @@ export async function rollbackSince(options: {
 }): Promise<RollbackResult> {
   const { root, since } = options;
 
-  const effectiveDryRun =
-    options.dryRun !== false || options.confirm !== true;
+  // Execute only when dryRun is explicitly false AND confirm is explicitly true
+  const effectiveDryRun = !(options.dryRun === false && options.confirm === true);
 
   const rollbackPlan = await planRollbackSince({
     root,

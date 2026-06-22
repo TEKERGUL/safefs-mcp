@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { loadConfig } from "./config/loadConfig.js";
+import { loadConfigCached } from "./config/cachedConfig.js";
 import { safeReadFile } from "./tools/safeReadFile.js";
 import { safeWrite } from "./tools/safeWrite.js";
 import { safePatch } from "./tools/safePatch.js";
@@ -25,7 +25,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ path: filePath }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeReadFile(root, filePath, config);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -45,7 +45,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ path: filePath, content, reason, sessionId }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeWrite({ root, path: filePath, content, reason, sessionId, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -67,7 +67,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ path: filePath, search, replace, replaceAll, reason, sessionId }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safePatch({ root, path: filePath, search, replace, replaceAll, reason, sessionId, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -86,7 +86,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ path: filePath, reason, sessionId }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeDelete({ root, path: filePath, reason, sessionId, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -104,7 +104,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ since, path: filePath }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeDiff({ root, since, path: filePath, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -125,7 +125,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ since, until, path: filePath, sessionId, limit }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeTimeline({ root, since, until, path: filePath, sessionId, limit, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -145,7 +145,7 @@ export function createServer(root: string): McpServer {
     },
     async ({ since, path: filePath, dryRun, confirm }) => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeRollbackTime({ root, since, path: filePath, dryRun, confirm, config });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
@@ -160,7 +160,7 @@ export function createServer(root: string): McpServer {
     {},
     async () => {
       try {
-        const config = await loadConfig(root);
+        const config = await loadConfigCached(root);
         const result = await safeStorageStatus(root, config);
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {

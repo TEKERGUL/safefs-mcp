@@ -23,14 +23,27 @@ export async function saveObject(
 ): Promise<string> {
   const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
   const hash = sha256Buffer(buffer);
+  assertValidHash(hash);
 
   const objPath = getObjectFilePath(root, hash);
 
-  if (await hasObject(root, hash)) {
-    return hash;
+  try {
+    const existing = await fs.readFile(objPath);
+    if (sha256Buffer(existing) === hash && existing.equals(buffer)) {
+      return hash;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
   }
 
-  await atomicWriteFile(objPath, buffer, { mode: 0o600 });
+  await atomicWriteFile(objPath, buffer, { mode: 0o600, verify: true });
+
+  const written = await fs.readFile(objPath);
+  if (sha256Buffer(written) !== hash || !written.equals(buffer)) {
+    throw new SafeFSError("OBJECT_WRITE_VERIFY_FAILED", `Object verification failed: ${hash}`);
+  }
 
   return hash;
 }

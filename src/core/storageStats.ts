@@ -1,5 +1,5 @@
 import { getStorageStats } from "./objectStore.js";
-import { getEventCount, queryEvents } from "./timeline.js";
+import { getEventCount, getTimelineBounds } from "./timeline.js";
 import type { SafeFSConfig } from "../types/index.js";
 
 export interface FullStorageStatus {
@@ -21,14 +21,9 @@ export async function getFullStorageStatus(
   const stats = await getStorageStats(root);
   const eventCount = await getEventCount(root);
 
-  const events = await queryEvents(root, {});
-  let oldestEvent: string | undefined;
-  let newestEvent: string | undefined;
-
-  if (events.length > 0) {
-    oldestEvent = events[0]!.timestamp;
-    newestEvent = events[events.length - 1]!.timestamp;
-  }
+  const bounds = await getTimelineBounds(root);
+  const oldestEvent = bounds.oldest;
+  const newestEvent = bounds.newest;
 
   const warnings: string[] = [];
   const recommendations: string[] = [];

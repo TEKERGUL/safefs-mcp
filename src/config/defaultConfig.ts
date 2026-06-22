@@ -101,6 +101,8 @@ export const DEFAULT_CONFIG: SafeFSConfig = {
   storage: {
     objectCompression: false,
     retentionWarningDays: 30,
+    retentionDays: 30,
+    autoprune: false,
   },
   watch: {
     intervalMs: 1000,
@@ -159,6 +161,8 @@ rollback:
 storage:
   objectCompression: false
   retentionWarningDays: 30
+  retentionDays: 30
+  autoprune: false
 
 watch:
   intervalMs: 1000
