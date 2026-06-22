@@ -18,7 +18,7 @@ export async function detectConflict(
         currentHash: await sha256File(filePath),
         reason: "File was recreated after agent deleted it.",
         suggestedAction:
-          "Review the file manually. Use safe_write to overwrite if rollback is intended.",
+          "Review the file manually. Re-run rollback after resolving the current file state if rollback is intended.",
       };
     }
     return null;

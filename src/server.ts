@@ -36,7 +36,7 @@ export function createServer(root: string): McpServer {
 
   server.tool(
     "safe_write",
-    "Write a file safely with a before-change snapshot. It validates the path, creates an object store snapshot of the existing content, writes the new content, and records a timeline event. Crucial for SafeFS tracking.",
+    "Deprecated compatibility writer. Prefer safefs guard/watch for normal native edits; use this only when a client explicitly needs SafeFS-managed writes.",
     {
       path: z.string().min(1).describe("Relative path to the file within the workspace"),
       content: z.string().describe("Full content to write to the file"),
@@ -56,7 +56,7 @@ export function createServer(root: string): McpServer {
 
   server.tool(
     "safe_patch",
-    "Apply targeted string replacement to a file. Use this for precise edits rather than full overwrites. Records before and after state hashes for safe rollback.",
+    "Deprecated compatibility patcher. Prefer safefs guard/watch for normal native edits; this still records before and after state hashes for rollback.",
     {
       path: z.string().min(1).describe("Relative path to the file within the workspace"),
       search: z.string().describe("Exact text to find in the file"),
@@ -78,7 +78,7 @@ export function createServer(root: string): McpServer {
 
   server.tool(
     "safe_delete",
-    "Delete a file safely with content backup. Stores file content for restoration via rollback.",
+    "Deprecated compatibility deleter. Prefer safefs guard/watch for normal native deletes; this stores file content for restoration via rollback.",
     {
       path: z.string().min(1).describe("Relative path to the file within the workspace"),
       reason: z.string().optional().describe("Human-readable reason for deletion"),

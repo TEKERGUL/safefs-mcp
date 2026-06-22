@@ -9,7 +9,8 @@ limits:
 
 # Add project-specific protected patterns here. SafeFS also enforces
 # mandatory protected paths such as .git/, .safefs/, .env*, keys,
-# secrets/, node_modules/, dist/, and build/ even if this list is empty.
+# package tokens, cloud credentials, secrets/, node_modules/, dist/,
+# and build/ even if this list is empty.
 protected:
   - ".git/**"
   - ".safefs/**"
@@ -17,6 +18,17 @@ protected:
   - ".env.*"
   - "**/*.pem"
   - "**/*.key"
+  - "**/*.p12"
+  - "**/*.pfx"
+  - "**/*.crt"
+  - "**/*.cer"
+  - "**/*.token"
+  - ".npmrc"
+  - ".pypirc"
+  - ".ssh/**"
+  - ".aws/**"
+  - "credentials*"
+  - "service-account*.json"
   - "**/id_rsa"
   - "**/id_ed25519"
   - "secrets/**"
@@ -33,3 +45,21 @@ rollback:
 storage:
   objectCompression: false
   retentionWarningDays: 30
+
+watch:
+  intervalMs: 1000
+  debounceMs: 750
+  maxFileSizeMB: 5
+  maxSnapshotBytesMB: 250
+  respectGitignore: true
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - ".next/**"
+    - "coverage/**"
+    - ".cache/**"
+    - "*.log"
+    - "*.tmp"
+    - "*.temp"
+    - ".safefs_tmp_*"

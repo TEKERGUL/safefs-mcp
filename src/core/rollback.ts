@@ -5,6 +5,8 @@ import { loadObject } from "./objectStore.js";
 import { detectConflict } from "./conflict.js";
 import { resolveSafePath } from "./pathSafety.js";
 import { atomicWriteFile, fileExists } from "./workspace.js";
+import { createRollbackSuppression } from "./suppression.js";
+import { sha256Buffer } from "./hash.js";
 import type {
   SafeFSConfig,
   RollbackResult,
@@ -19,6 +21,7 @@ export interface PlannedRollback {
   earliestEvent: TimelineEvent;
   latestEvent: TimelineEvent;
   absolutePath: string;
+  moveFromAbsolutePath?: string;
 }
 
 export interface RollbackPlan {
@@ -75,9 +78,24 @@ export async function rollbackSince(options: {
     };
   }
 
+  await createRollbackSuppression({
+    root,
+    paths: rollbackPlan.planned.flatMap((plan) => [
+      plan.item.path,
+      plan.item.moveFromPath,
+      plan.item.moveToPath,
+    ]).filter((value): value is string => Boolean(value)),
+  });
+
   for (const plan of rollbackPlan.planned) {
     try {
-      if (plan.item.action === "restore" && plan.earliestEvent.beforeObject) {
+      if (plan.item.action === "move_back" && plan.moveFromAbsolutePath && plan.latestEvent.afterObject) {
+        const content = await loadObject(root, plan.latestEvent.afterObject);
+        if (await fileExists(plan.absolutePath)) {
+          await fs.unlink(plan.absolutePath);
+        }
+        await atomicWriteFile(plan.moveFromAbsolutePath, content);
+      } else if (plan.item.action === "restore" && plan.earliestEvent.beforeObject) {
         const content = await loadObject(root, plan.earliestEvent.beforeObject);
         await atomicWriteFile(plan.absolutePath, content);
       } else if (await fileExists(plan.absolutePath)) {
@@ -139,9 +157,13 @@ export async function planRollbackSince(options: {
       ).relativePath
     : undefined;
 
-  const events = await queryEvents(root, {
-    since: cutoffTime,
-    path: normalizedPath,
+  const events = (await queryEvents(root, { since: cutoffTime })).filter((event) => {
+    if (!normalizedPath) return true;
+    return (
+      event.path === normalizedPath ||
+      event.move?.fromPath === normalizedPath ||
+      event.move?.toPath === normalizedPath
+    );
   });
 
   const committedMutations = events.filter(isCommittedMutation);
@@ -178,6 +200,37 @@ export async function planRollbackSince(options: {
       continue;
     }
 
+    if (latestEvent.operation === "move" && latestEvent.move) {
+      const from = await resolveSafePath({
+        root,
+        requestedPath: latestEvent.move.fromPath,
+        config,
+      });
+      if (await fileExists(from.absolutePath)) {
+        conflicts.push(await createExistingDestinationConflict(from.absolutePath, latestEvent, from.relativePath));
+        skipped.push(filePath);
+        continue;
+      }
+
+      planned.push({
+        item: {
+          path: resolved.relativePath,
+          action: "move_back",
+          eventIds: sorted.map((event) => event.eventId),
+          beforeHash: earliestEvent.beforeHash ?? null,
+          afterHash: latestEvent.afterHash ?? null,
+          moveFromPath: latestEvent.move.fromPath,
+          moveToPath: latestEvent.move.toPath,
+        },
+        events: sorted,
+        earliestEvent,
+        latestEvent,
+        absolutePath: resolved.absolutePath,
+        moveFromAbsolutePath: from.absolutePath,
+      });
+      continue;
+    }
+
     planned.push({
       item: {
         path: resolved.relativePath,
@@ -200,6 +253,22 @@ export async function planRollbackSince(options: {
   };
 }
 
+async function createExistingDestinationConflict(
+  absolutePath: string,
+  latestEvent: TimelineEvent,
+  relativePath: string
+): Promise<ConflictDetail> {
+  const current = await fs.readFile(absolutePath);
+  return {
+    path: relativePath,
+    eventId: latestEvent.eventId,
+    expectedHash: null,
+    currentHash: sha256Buffer(current),
+    reason: "Original move destination already exists.",
+    suggestedAction: "Move or review the existing file before applying rollback.",
+  };
+}
+
 function isCommittedMutation(event: TimelineEvent): boolean {
   const committedByStatus =
     event.status === undefined ? event.committed : event.status === "committed";
@@ -209,6 +278,7 @@ function isCommittedMutation(event: TimelineEvent): boolean {
     event.committed &&
     (event.operation === "write" ||
       event.operation === "patch" ||
-      event.operation === "delete")
+      event.operation === "delete" ||
+      event.operation === "move")
   );
 }

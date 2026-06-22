@@ -9,9 +9,12 @@ import { runDiff } from "./cli/diff.js";
 import { runStorage } from "./cli/storage.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runWatch } from "./cli/watch.js";
+import { runGuard } from "./cli/guard.js";
 import { SafeFSError } from "./types/index.js";
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const leadingRoot = parseLeadingRoot(rawArgs);
+const args = leadingRoot ? rawArgs.slice(leadingRoot.consumed) : rawArgs;
 const command = args[0];
 
 async function main(): Promise<void> {
@@ -53,6 +56,9 @@ async function main(): Promise<void> {
     case "watch":
       await handleWatch();
       break;
+    case "guard":
+      await handleGuard();
+      break;
     default:
       console.error(`Unknown command: ${command}`);
       console.error('Run "safefs --help" for usage.');
@@ -68,9 +74,10 @@ Usage:
   safefs serve --root <path>         Start MCP server
   safefs timeline [options]          Show file-change history
   safefs rollback <time> [options]   Rollback agent changes
-  safefs diff --since <time>         Preview rollback as unified diffs
+  safefs diff <time>                Preview rollback as unified diffs
   safefs doctor                      Check SafeFS setup health
   safefs watch                       Track native file edits from any client
+  safefs guard -- <command>          Run a command with SafeFS watching native edits
   safefs storage                     Show storage status
 
 Init options:
@@ -85,6 +92,7 @@ Doctor options:
 Watch options:
   --interval <ms>            Polling interval (default: 1000)
   --once                     Build baseline and exit
+  --dry-run                  Show watch baseline summary without writing SafeFS state
 
 Global options:
   --root <path>              Project root (defaults to current directory)
@@ -103,8 +111,9 @@ Examples:
   safefs init --yes --clients codex,cursor,claude,gemini
   node dist/cli.js init --local --yes --clients gemini
   safefs timeline --since 3h
-  safefs diff --since 1h
+  safefs diff 1h
   safefs watch
+  safefs guard -- claude
   safefs rollback 1h
   safefs rollback 1h --yes
   safefs rollback 3h --path src/auth/login.ts --yes
@@ -147,7 +156,7 @@ async function handleTimeline(): Promise<void> {
 
 async function handleRollback(): Promise<void> {
   const root = resolveRoot();
-  const since = args[1];
+  const since = getFlag("--since") ?? (args[1]?.startsWith("--") ? undefined : args[1]);
 
   if (!since) {
     console.error("Error: rollback requires a time argument.");
@@ -167,8 +176,8 @@ async function handleDiff(): Promise<void> {
   const since = getFlag("--since") ?? (args[1]?.startsWith("--") ? undefined : args[1]);
 
   if (!since) {
-    console.error("Error: diff requires --since <time>.");
-    console.error("Example: safefs diff --since 1h");
+    console.error("Error: diff requires a time argument.");
+    console.error("Example: safefs diff 1h");
     process.exit(1);
   }
 
@@ -200,15 +209,41 @@ async function handleWatch(): Promise<void> {
   await runWatch(root, {
     intervalMs: interval,
     once: args.includes("--once"),
+    dryRun: args.includes("--dry-run"),
   });
 }
 
+async function handleGuard(): Promise<void> {
+  const root = resolveRoot();
+  const separatorIndex = args.indexOf("--");
+  const commandArgs = separatorIndex === -1 ? args.slice(1) : args.slice(separatorIndex + 1);
+  const exitCode = await runGuard(root, commandArgs);
+  process.exitCode = exitCode;
+}
+
 function resolveRoot(): string {
-  const rootFlag = getFlag("--root");
+  const rootFlag = getFlag("--root") ?? leadingRoot?.value;
   if (rootFlag) {
     return path.resolve(rootFlag);
   }
   return process.cwd();
+}
+
+function parseLeadingRoot(input: string[]): { value: string; consumed: number } | undefined {
+  if (input[0] === "--root" && input[1]) {
+    return { value: input[1], consumed: 2 };
+  }
+
+  if (input[0]?.startsWith("--root=")) {
+    return { value: input[0].slice("--root=".length), consumed: 1 };
+  }
+
+  return undefined;
+}
+
+function getCliArgs(): string[] {
+  const separatorIndex = args.indexOf("--");
+  return separatorIndex === -1 ? args : args.slice(0, separatorIndex);
 }
 
 function resolveCurrentCliPath(): string {
@@ -216,9 +251,10 @@ function resolveCurrentCliPath(): string {
 }
 
 function getFlag(name: string): string | undefined {
-  const index = args.indexOf(name);
+  const cliArgs = getCliArgs();
+  const index = cliArgs.indexOf(name);
   if (index === -1) return undefined;
-  return args[index + 1];
+  return cliArgs[index + 1];
 }
 
 function parseOptionalNumberFlag(name: string): number | undefined {

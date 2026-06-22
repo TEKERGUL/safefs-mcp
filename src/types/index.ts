@@ -1,10 +1,10 @@
-export type Operation = "write" | "patch" | "delete" | "rollback";
+export type Operation = "write" | "patch" | "delete" | "move" | "rollback";
 
 export type RiskLevel = "low" | "medium" | "high" | "blocked";
 
 export type TimelineStatus = "pending" | "committed" | "failed";
 
-export type RollbackActionType = "restore" | "delete_created";
+export type RollbackActionType = "restore" | "delete_created" | "move_back";
 
 export interface PatchMetadata {
   search?: string;
@@ -30,6 +30,10 @@ export interface TimelineEvent {
   beforeObject?: string | null;
   afterObject?: string | null;
   patch?: PatchMetadata;
+  move?: {
+    fromPath: string;
+    toPath: string;
+  };
   risk: RiskLevel;
   reason?: string;
   committed: boolean;
@@ -53,6 +57,8 @@ export interface RollbackPlanItem {
   eventIds: string[];
   beforeHash: string | null;
   afterHash: string | null;
+  moveFromPath?: string;
+  moveToPath?: string;
 }
 
 export interface SafeFSConfig {
@@ -73,6 +79,14 @@ export interface SafeFSConfig {
   storage: {
     objectCompression: boolean;
     retentionWarningDays: number;
+  };
+  watch: {
+    intervalMs: number;
+    debounceMs: number;
+    maxFileSizeMB: number;
+    maxSnapshotBytesMB: number;
+    respectGitignore: boolean;
+    exclude: string[];
   };
 }
 

@@ -66,7 +66,8 @@ describe("init", () => {
 
     const content = await fs.readFile(path.join(tmpDir, "AGENTS.md"), "utf-8");
     expect(content).toContain("SafeFS Agent Rules");
-    expect(content).toContain("safe_write");
+    expect(content).toContain("guard/watch mode");
+    expect(content).toContain("safe_diff");
   });
 
   it("init does not overwrite existing AGENTS.md", async () => {
@@ -92,6 +93,7 @@ describe("init", () => {
     const gemini = await fs.readFile(path.join(tmpDir, ".gemini", "settings.json"), "utf-8");
 
     expect(codex).toContain("safe_diff");
+    expect(codex).not.toContain("safe_write");
     expect(cursor).toContain("@tekergul/safefs-mcp");
     expect(claude).toContain("@tekergul/safefs-mcp");
     expect(gemini).toContain("\"mcpServers\"");

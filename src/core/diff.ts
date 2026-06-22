@@ -14,6 +14,17 @@ export async function diffSince(options: {
   const diffs: FileDiff[] = [];
 
   for (const item of plan.planned) {
+    if (item.item.action === "move_back" && item.item.moveFromPath && item.item.moveToPath) {
+      diffs.push({
+        path: item.item.path,
+        action: item.item.action,
+        eventIds: item.item.eventIds,
+        diff: `MOVE ${item.item.moveFromPath} -> ${item.item.moveToPath}\nRollback: move ${item.item.moveToPath} -> ${item.item.moveFromPath}\n`,
+        binary: false,
+      });
+      continue;
+    }
+
     const current = (await fileExists(item.absolutePath))
       ? await fs.readFile(item.absolutePath)
       : null;
@@ -29,7 +40,6 @@ export async function diffSince(options: {
       binary: isBinary(current) || isBinary(target),
     });
   }
-
   return {
     success: true,
     since: options.since,

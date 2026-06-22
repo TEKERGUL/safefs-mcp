@@ -1,24 +1,21 @@
 # SafeFS Agent Rules
 
-When SafeFS MCP tools are available, do not directly write, overwrite, patch, or delete project files.
+SafeFS is installed as a guard for AI coding sessions. You may use normal file editing tools; SafeFS watch/guard records native file changes in the background for rollback.
 
-Use SafeFS tools for file changes:
+Use SafeFS MCP tools for recovery and inspection:
 
-- Use `safe_read_file` to inspect files.
-- Use `safe_write` for full file writes.
-- Use `safe_patch` for targeted replacements.
-- Use `safe_delete` only for file deletion.
 - Use `safe_diff` to preview rollback changes.
 - Use `safe_timeline` to inspect recent agent changes.
 - Use `safe_rollback_time` with `dryRun: true` before applying rollback.
 - Use `safe_storage_status` to inspect SafeFS storage.
 
-Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as `mcp_safefs_safe_write`.
+Legacy write tools may exist for compatibility, but guard/watch mode is preferred for normal edits.
+
+Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as `mcp_safefs_safe_diff`.
 
 Safety rules:
 
 - Never access `.safefs/` internals directly.
-- Never modify `.git/`, `.env`, secret keys, or protected paths.
+- Never modify `.git/`, `.env`, secret keys, package tokens, cloud credentials, or protected paths.
 - Before broad changes, explain the intended change.
-- After making changes, summarize the SafeFS event IDs.
 - For rollback, dry-run first unless the user explicitly asks to apply immediately.

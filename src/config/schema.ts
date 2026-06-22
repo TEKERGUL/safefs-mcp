@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MANDATORY_PROTECTED_PATTERNS } from "./defaultConfig.js";
+import { MANDATORY_PROTECTED_PATTERNS, DEFAULT_WATCH_EXCLUDE_PATTERNS } from "./defaultConfig.js";
 
 export const SafeFSConfigSchema = z.object({
   workspace: z
@@ -28,6 +28,16 @@ export const SafeFSConfigSchema = z.object({
     .object({
       objectCompression: z.boolean().default(false),
       retentionWarningDays: z.number().positive().max(3650).default(30),
+    })
+    .default({}),
+  watch: z
+    .object({
+      intervalMs: z.number().int().positive().max(60000).default(1000),
+      debounceMs: z.number().int().nonnegative().max(60000).default(750),
+      maxFileSizeMB: z.number().positive().max(1024).default(5),
+      maxSnapshotBytesMB: z.number().positive().max(1024 * 1024).default(250),
+      respectGitignore: z.boolean().default(true),
+      exclude: z.array(z.string()).default([...DEFAULT_WATCH_EXCLUDE_PATTERNS]),
     })
     .default({}),
 });

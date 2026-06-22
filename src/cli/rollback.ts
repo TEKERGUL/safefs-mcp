@@ -27,7 +27,9 @@ export async function runRollback(
       const action =
         item.action === "delete_created"
           ? "would delete agent-created file"
-          : "would restore previous content";
+          : item.action === "move_back"
+            ? `would move ${item.moveToPath} back to ${item.moveFromPath}`
+            : "would restore previous content";
       console.log(`RESTORE ${item.path.padEnd(35)} ${action}`);
     }
 

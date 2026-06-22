@@ -17,10 +17,36 @@ export const MANDATORY_PROTECTED_PATTERNS = [
   "**/*.pem",
   "*.key",
   "**/*.key",
+  "*.p12",
+  "**/*.p12",
+  "*.pfx",
+  "**/*.pfx",
+  "*.crt",
+  "**/*.crt",
+  "*.cer",
+  "**/*.cer",
+  "*.token",
+  "**/*.token",
   "id_rsa",
   "id_ed25519",
   "**/id_rsa",
   "**/id_ed25519",
+  ".npmrc",
+  "**/.npmrc",
+  ".pypirc",
+  "**/.pypirc",
+  ".ssh",
+  ".ssh/**",
+  "**/.ssh",
+  "**/.ssh/**",
+  ".aws",
+  ".aws/**",
+  "**/.aws",
+  "**/.aws/**",
+  "credentials*",
+  "**/credentials*",
+  "service-account*.json",
+  "**/service-account*.json",
   "secrets",
   "secrets/**",
   "**/secrets",
@@ -37,6 +63,24 @@ export const MANDATORY_PROTECTED_PATTERNS = [
   ".next/**",
   "coverage",
   "coverage/**",
+];
+
+export const DEFAULT_WATCH_EXCLUDE_PATTERNS = [
+  "node_modules/**",
+  "dist/**",
+  "build/**",
+  ".next/**",
+  "coverage/**",
+  ".cache/**",
+  ".turbo/**",
+  ".pnpm-store/**",
+  "*.log",
+  "*.tmp",
+  "*.temp",
+  "*.swp",
+  "*.swo",
+  "~$*",
+  ".safefs_tmp_*",
 ];
 
 export const DEFAULT_CONFIG: SafeFSConfig = {
@@ -58,6 +102,14 @@ export const DEFAULT_CONFIG: SafeFSConfig = {
     objectCompression: false,
     retentionWarningDays: 30,
   },
+  watch: {
+    intervalMs: 1000,
+    debounceMs: 750,
+    maxFileSizeMB: 5,
+    maxSnapshotBytesMB: 250,
+    respectGitignore: true,
+    exclude: [...DEFAULT_WATCH_EXCLUDE_PATTERNS],
+  },
 };
 
 export const DEFAULT_CONFIG_YAML = `workspace:
@@ -71,7 +123,8 @@ limits:
 
 # Add project-specific protected patterns here. SafeFS also enforces
 # mandatory protected paths such as .git/, .safefs/, .env*, keys,
-# secrets/, node_modules/, dist/, and build/ even if this list is empty.
+# package tokens, cloud credentials, secrets/, node_modules/, dist/,
+# and build/ even if this list is empty.
 protected:
   - ".git/**"
   - ".safefs/**"
@@ -79,6 +132,17 @@ protected:
   - ".env.*"
   - "**/*.pem"
   - "**/*.key"
+  - "**/*.p12"
+  - "**/*.pfx"
+  - "**/*.crt"
+  - "**/*.cer"
+  - "**/*.token"
+  - ".npmrc"
+  - ".pypirc"
+  - ".ssh/**"
+  - ".aws/**"
+  - "credentials*"
+  - "service-account*.json"
   - "**/id_rsa"
   - "**/id_ed25519"
   - "secrets/**"
@@ -95,4 +159,22 @@ rollback:
 storage:
   objectCompression: false
   retentionWarningDays: 30
+
+watch:
+  intervalMs: 1000
+  debounceMs: 750
+  maxFileSizeMB: 5
+  maxSnapshotBytesMB: 250
+  respectGitignore: true
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - ".next/**"
+    - "coverage/**"
+    - ".cache/**"
+    - "*.log"
+    - "*.tmp"
+    - "*.temp"
+    - ".safefs_tmp_*"
 `;
