@@ -58,7 +58,7 @@ export async function collectGarbage(
         try {
           const fileStat = await fs.stat(filePath);
           if (fileStat.isFile()) {
-            if (now - fileStat.mtimeMs < graceMs) {
+            if (graceMs > 0 && now - fileStat.mtimeMs < graceMs) {
               skippedYoung++;
               retained++;
               continue;
