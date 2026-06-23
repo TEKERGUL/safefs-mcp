@@ -22,7 +22,7 @@ Invoke-Expression (safefs auto-guard env powershell)
 eval "$(safefs auto-guard env bash)"
 ```
 
-Before npm publish, use local checkout mode:
+When developing from a local checkout, use local mode:
 
 ```bash
 node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini --auto-guard
@@ -42,4 +42,4 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini --auto-
 - Gemini CLI tools are exposed with fully qualified names like `mcp_safefs_safe_diff`.
 - Run `safefs doctor --gemini-smoke` to verify Gemini CLI can see the SafeFS MCP config.
 - The `safefs.yml` file is an example `.safefs.yml` project config.
-- If installing from a local GitHub checkout, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.
+- If developing from a local GitHub checkout, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.

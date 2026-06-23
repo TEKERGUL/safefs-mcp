@@ -4,18 +4,44 @@
 
 # SafeFS MCP
 
+[![npm version](https://img.shields.io/npm/v/@tekergul/safefs-mcp.svg)](https://www.npmjs.com/package/@tekergul/safefs-mcp)
 [![CI](https://github.com/TEKERGUL/safefs-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/TEKERGUL/safefs-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
 
 AI broke your code? Roll back the last 10 minutes.
 
-SafeFS is a lightweight session guard for AI coding agents. It records local before-change snapshots while Claude Code, Codex, Antigravity, Cursor, editors, or terminals make normal native file edits. No Git commit, Docker daemon, database, or network service is required.
+SafeFS is a lightweight session guard for AI coding agents. It records local before-change snapshots while Claude Code, Codex, Cursor, Gemini CLI, editors, or terminals make normal native file edits. No Git commit, Docker daemon, database, or network service is required.
+
+SafeFS is still an MCP server, but the recommended 1.1 workflow is guard-first: the watcher records native edits in the background, while MCP tools handle diff, timeline, storage status, and rollback.
+
+## Why SafeFS
+
+AI coding tools are fast, but one bad refactor can spread across many files before you notice. Git helps when you remembered to commit. SafeFS covers the gap between "I just asked the agent to try something" and "I am sure I want to keep this."
+
+- Start an AI session with lightweight protection
+- Let agents use their normal edit tools
+- Preview what changed in the last `10m`, `1h`, or `1d`
+- Roll back only the risky session window without resetting the whole repo
+- Keep secrets, `.git`, `.safefs`, vendor folders, build output, binary files, and large files out of snapshots by default
 
 ## Quick Start
 
-```powershell
+Install once:
+
+```bash
 npm install -g @tekergul/safefs-mcp
+```
+
+Upgrade later:
+
+```bash
+npm install -g @tekergul/safefs-mcp@latest
+```
+
+Initialize a project:
+
+```powershell
 safefs init --yes --clients claude --auto-guard
 Invoke-Expression (safefs auto-guard env powershell)
 claude
@@ -24,13 +50,12 @@ claude
 Bash/zsh:
 
 ```bash
-npm install -g @tekergul/safefs-mcp
 safefs init --yes --clients claude --auto-guard
 eval "$(safefs auto-guard env bash)"
 claude
 ```
 
-Preview and apply rollback:
+Preview and apply recovery:
 
 ```bash
 safefs diff 10m
@@ -38,16 +63,48 @@ safefs rollback 10m
 safefs rollback 10m --yes
 ```
 
+Rollback defaults to dry-run. Use `--yes` only after reviewing the plan or diff.
+
+## 30-Second Demo Flow
+
+```bash
+npm install -g @tekergul/safefs-mcp
+safefs init --yes --clients claude --auto-guard
+eval "$(safefs auto-guard env bash)"
+claude
+```
+
+Ask the agent to improve a small app. Then ask for a risky refactor. When the result breaks:
+
+```bash
+safefs diff 10m
+safefs rollback 10m --yes
+```
+
+SafeFS restores the pre-change state for the affected files while leaving unrelated project files alone.
+
 ## Features
 
-- Works even when agents use their native edit tools through guard/watch or project-local auto-guard
-- Roll back AI changes from `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
-- Preview rollback as readable diffs before applying changes
+- Works when agents use native edit tools through guard/watch or project-local auto-guard
+- Roll back AI changes from `10m`, `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
+- Preview rollback as readable unified diffs before applying changes
 - Restore one file without resetting the whole project
 - Skip conflicts when files changed after the recorded edit
 - Ignore protected paths, secrets, vendor folders, build output, binary files, and large files by default
 - Cache watch state in a local manifest for large projects
-- Support Codex, Cursor, Claude Code, Gemini CLI, Roo Code, Cline, and other MCP clients
+- Detect stable writes, common temp files, case collisions, symlinks, and same-hash moves
+- Support Claude Code, Codex, Cursor, Gemini CLI, Roo Code, Cline, and other MCP clients
+
+## Install Modes
+
+| Mode | Command | Best for |
+| --- | --- | --- |
+| Auto-guard | `safefs init --yes --clients claude --auto-guard` | Everyday AI sessions with minimal typing |
+| Manual guard | `safefs guard -- claude` | One-off protected sessions |
+| Watch | `safefs watch` | A separate terminal watching all local edits |
+| MCP only | `safefs serve --root .` | Clients that only need recovery/status tools |
+
+Auto-guard is project-local. It creates wrappers under `.safefs/bin` and activation scripts under `.safefs/`, but it does not edit global shell profiles or hijack global binaries.
 
 ## CLI
 
@@ -73,7 +130,6 @@ safefs gc
 safefs gc --yes
 ```
 
-Rollback defaults to dry-run. Use `--yes` only after reviewing the plan or diff.
 Maintenance commands also default to dry-run. `prune` removes old timeline events and `gc` removes unreferenced objects only when `--yes` is provided.
 
 ## Auto-Guard, Guard, And Watch Mode
@@ -109,6 +165,17 @@ safefs watch
 
 Watch mode respects `.gitignore`, protected patterns, file-size limits, stable-write debounce, binary detection, case-collision safety, symlink policy, move detection, and `.safefs/watch/manifest.json` reuse.
 
+## Supported Clients
+
+| Client | MCP config | Auto-guard wrapper | Notes |
+| --- | --- | --- | --- |
+| Claude Code | Yes | Yes | Recommended demo path |
+| Codex | Yes | Yes | Use SafeFS MCP tools for inspection/recovery |
+| Cursor | Yes | Yes | MCP config snippet is generated by init |
+| Gemini CLI | Yes | Yes | Tool names may be alias-prefixed |
+| Roo Code / Cline | Manual example | Watch/guard compatible | Use standard MCP server config |
+| Other editors / terminals | No generated config | Watch/guard compatible | Use `safefs watch` or `safefs guard -- <command>` |
+
 ## MCP Tools
 
 SafeFS remains an MCP server. The watcher/auto-guard layer captures native edits; MCP tools provide recovery and inspection:
@@ -137,6 +204,21 @@ Gemini CLI qualifies MCP tool names with the server alias, so SafeFS tools may a
 
 If a file changed after the recorded edit, rollback skips it and reports the expected/current hashes.
 
+## Example Recovery Session
+
+```bash
+# See what SafeFS can restore from the last 10 minutes.
+safefs diff 10m
+
+# Preview rollback without touching files.
+safefs rollback 10m
+
+# Apply the rollback after review.
+safefs rollback 10m --yes
+```
+
+Typical dry-run output separates restored files, created files that would be deleted, conflicts, and skipped files. Conflict reports include expected and current hashes so you can decide whether to keep manual edits, inspect the diff, or retry with a narrower path.
+
 ## Security Model
 
 - Paths must stay inside the workspace root
@@ -148,6 +230,24 @@ If a file changed after the recorded edit, rollback skips it and reports the exp
 - Timeline pruning and object garbage collection are explicit, dry-run-first maintenance commands
 
 See [SECURITY.md](SECURITY.md).
+
+## Storage And Privacy
+
+SafeFS stores snapshots inside the project-local `.safefs/` directory. It does not upload source code, send file contents to a server, or require a background cloud service.
+
+Default watch rules avoid:
+
+- `.git/`, `.safefs/`, `.env*`, credentials, keys, and token-like files
+- `node_modules/`, `dist/`, `build/`, caches, and package-manager stores
+- binary files, very large files, and temporary editor files
+- symlink escapes outside the workspace root
+
+You can inspect local storage with:
+
+```bash
+safefs storage
+safefs timeline --since 1h
+```
 
 ## Client Configuration
 
@@ -223,7 +323,46 @@ enabled_tools = [
 - Directory deletion is intentionally blocked in 1.1
 - Function-level and exact line-range rollback are planned for later releases
 - Object compression is not enabled in 1.1
+- Auto-guard is opt-in per project; SafeFS does not modify global shell startup files
 - SafeFS complements Git; it does not replace commits, branches, or backups
+
+## Architecture
+
+SafeFS is built as three cooperating layers: an MCP control layer, a native edit watcher, and a rollback engine.
+
+```mermaid
+flowchart TD
+  A["AI coding client<br/>Claude, Codex, Cursor, Gemini"] --> B["Native edit path<br/>editor tools, terminal, agent writes"]
+  A --> C["MCP control layer<br/>safe_diff, safe_timeline, safe_rollback_time"]
+  B --> D["Guard / watch layer<br/>stable writes, excludes, move detection"]
+  D --> E["Path safety and policy<br/>protected patterns, symlinks, size limits"]
+  E --> F["Object store<br/>.safefs/objects"]
+  E --> G["Timeline<br/>.safefs/timeline/events.jsonl"]
+  C --> H["Rollback engine<br/>dry-run, conflict checks, restore"]
+  F --> H
+  G --> H
+  H --> I["Workspace files"]
+  H --> J["Suppression marker<br/>prevents rollback from being re-recorded"]
+  J --> D
+```
+
+### Data Flow
+
+1. `auto-guard`, `guard`, or `watch` starts a lightweight watcher for the workspace.
+2. The agent edits files normally. SafeFS does not require the agent to call legacy write tools.
+3. Watch mode waits for writes to become stable, filters unsafe paths, and stores content-addressed objects.
+4. Timeline events record committed file changes, including write, delete, and move operations.
+5. `safe_diff` and `safefs diff` compute what rollback would restore.
+6. `safe_rollback_time` and `safefs rollback` validate current hashes before changing files.
+7. Rollback suppression prevents SafeFS from recording its own restore operation as a fresh edit.
+
+### Design Principles
+
+- Guard native edits instead of trusting every agent to choose the right write tool
+- Prefer dry-run-first recovery over destructive automation
+- Keep project data local and inspectable
+- Protect secrets and workspace internals even if user config is permissive
+- Stay lightweight enough for real repositories, not just demos
 
 ## Development
 
