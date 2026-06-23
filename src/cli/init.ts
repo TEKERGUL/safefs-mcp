@@ -3,10 +3,10 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_CONFIG_YAML } from "../config/defaultConfig.js";
-import { installAutoGuard } from "./autoGuard.js";
+import { getAutoGuardCompatibleClients, installAutoGuard } from "./autoGuard.js";
 import type { AutoGuardInstallResult } from "./autoGuard.js";
 
-export type InitClient = "codex" | "cursor" | "claude" | "gemini";
+export type InitClient = "codex" | "cursor" | "claude" | "gemini" | "antigravity";
 export type InitInstallMode = "npm" | "local";
 
 export interface InitOptions {
@@ -37,6 +37,8 @@ interface McpCommandSpec {
 }
 
 const PACKAGE_NAME = "@tekergul/safefs-mcp";
+const DEFAULT_INIT_CLIENTS: InitClient[] = ["codex", "cursor", "claude", "gemini"];
+const INIT_CLIENT_PROMPT = "codex,cursor,claude,gemini,antigravity";
 
 const AGENTS_MD = [
   "# SafeFS Agent Rules",
@@ -53,6 +55,7 @@ const AGENTS_MD = [
   "Legacy write tools may exist for compatibility, but guard/watch mode is preferred for normal edits.",
   "",
   "Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as `mcp_safefs_safe_diff`.",
+  "Note for Antigravity: use `safefs mcp-config antigravity` for the global MCP snippet, and run `safefs watch` while using the IDE.",
   "",
   "Safety rules:",
   "",
@@ -96,12 +99,14 @@ export async function runInit(
 
   for (const client of result.clients) {
     const target = createClientFile(client, commandSpec);
+    if (!target) continue;
     await writeIfMissing(root, target.file, target.content, result, `${client} MCP config`);
   }
 
+  const autoGuardClients = getAutoGuardCompatibleClients(result.clients);
   if (await selectAutoGuard(options, result.clients)) {
     result.autoGuard = await installAutoGuard(root, {
-      clients: result.clients,
+      clients: autoGuardClients,
       commandSpec: createAutoGuardCommandSpec(options),
     });
     for (const file of result.autoGuard.created) {
@@ -122,7 +127,7 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
   }
 
   if (options.yes) {
-    return ["codex", "cursor", "claude", "gemini"];
+    return DEFAULT_INIT_CLIENTS;
   }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -132,9 +137,9 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
   const rl = createInterface({ input, output });
   try {
     const answer = await rl.question(
-      "Create MCP configs for which clients? [codex,cursor,claude,gemini] "
+      `Create MCP configs for which clients? [${INIT_CLIENT_PROMPT}] `
     );
-    const raw = answer.trim() || "codex,cursor,claude,gemini";
+    const raw = answer.trim() || INIT_CLIENT_PROMPT;
     return parseClients(raw);
   } finally {
     rl.close();
@@ -142,11 +147,12 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
 }
 
 async function selectAutoGuard(options: InitOptions, clients: InitClient[]): Promise<boolean> {
+  const autoGuardClients = getAutoGuardCompatibleClients(clients);
   if (options.autoGuard !== undefined) {
-    return options.autoGuard && clients.length > 0;
+    return options.autoGuard && autoGuardClients.length > 0;
   }
 
-  if (options.yes || clients.length === 0) {
+  if (options.yes || autoGuardClients.length === 0) {
     return false;
   }
 
@@ -164,7 +170,7 @@ async function selectAutoGuard(options: InitOptions, clients: InitClient[]): Pro
 }
 
 function parseClients(raw: string): InitClient[] {
-  const allowed = new Set<InitClient>(["codex", "cursor", "claude", "gemini"]);
+  const allowed = new Set<InitClient>(["codex", "cursor", "claude", "gemini", "antigravity"]);
   return uniqueClients(
     raw
       .split(",")
@@ -205,7 +211,7 @@ function createAutoGuardCommandSpec(options: InitOptions): McpCommandSpec {
   };
 }
 
-function createClientFile(client: InitClient, spec: McpCommandSpec): ClientFile {
+function createClientFile(client: InitClient, spec: McpCommandSpec): ClientFile | undefined {
   switch (client) {
     case "claude":
       return {
@@ -227,6 +233,8 @@ function createClientFile(client: InitClient, spec: McpCommandSpec): ClientFile 
         file: ".gemini/settings.json",
         content: createJsonClientConfig(spec, { timeout: 600000, trust: false }),
       };
+    case "antigravity":
+      return undefined;
   }
 }
 
@@ -326,7 +334,11 @@ function printInitSummary(result: InitResult): void {
   console.log(`Install mode: ${result.installMode === "local" ? "local checkout" : "npm package"}`);
 
   if (result.clients.length > 0) {
-    console.log(`MCP configs: ${result.clients.join(", ")}`);
+    const generatedClients = result.clients.filter((client) => client !== "antigravity");
+    console.log(`MCP configs: ${generatedClients.length > 0 ? generatedClients.join(", ") : "none generated"}`);
+    if (result.clients.includes("antigravity")) {
+      console.log("MCP snippets: antigravity (run `safefs mcp-config antigravity`)");
+    }
   } else {
     console.log("MCP configs: none selected");
   }
@@ -337,9 +349,14 @@ function printInitSummary(result: InitResult): void {
     console.log("Auto-guard: not installed");
   }
 
+  if (result.clients.includes("antigravity")) {
+    console.log("Watch-first clients: antigravity (run `safefs watch` before opening Antigravity)");
+  }
+
   console.log("");
   console.log("Next:");
   console.log("  safefs doctor");
+  const antigravitySelected = result.clients.includes("antigravity");
   if (result.autoGuard) {
     if (process.platform === "win32") {
       console.log("  Invoke-Expression (safefs auto-guard env powershell)");
@@ -347,7 +364,13 @@ function printInitSummary(result: InitResult): void {
       console.log("  eval \"$(safefs auto-guard env bash)\"");
     }
   }
+  if (antigravitySelected) {
+    console.log("  safefs mcp-config antigravity");
+    console.log("  safefs watch");
+  }
   console.log("  safefs guard -- claude");
-  console.log("  safefs watch");
+  if (!antigravitySelected) {
+    console.log("  safefs watch");
+  }
   console.log("  safefs timeline --since 1h");
 }

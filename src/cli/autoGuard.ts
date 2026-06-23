@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { runGuard } from "./guard.js";
 import type { InitClient } from "./init.js";
 
-export type AutoGuardClient = InitClient;
+export type AutoGuardClient = Exclude<InitClient, "antigravity">;
 export type AutoGuardShell = "powershell" | "cmd" | "bash" | "zsh";
 
 export interface AutoGuardCommandSpec {
@@ -13,7 +13,7 @@ export interface AutoGuardCommandSpec {
 }
 
 export interface AutoGuardInstallOptions {
-  clients?: AutoGuardClient[];
+  clients?: InitClient[];
   commandSpec?: AutoGuardCommandSpec;
 }
 
@@ -51,13 +51,17 @@ export async function installAutoGuard(
   options: AutoGuardInstallOptions = {}
 ): Promise<AutoGuardInstallResult> {
   const normalizedRoot = path.resolve(root);
-  const clients = uniqueClients(options.clients ?? AUTO_GUARD_CLIENTS);
+  const clients = getAutoGuardCompatibleClients(options.clients ?? AUTO_GUARD_CLIENTS);
   const commandSpec = options.commandSpec ?? DEFAULT_COMMAND_SPEC;
   const result: AutoGuardInstallResult = {
     created: [],
     skipped: [],
     clients,
   };
+
+  if (clients.length === 0) {
+    return result;
+  }
 
   await fs.mkdir(path.join(normalizedRoot, ".safefs", "bin"), { recursive: true });
 
@@ -237,6 +241,10 @@ export function isAutoGuardClient(value: string): value is AutoGuardClient {
 
 export function getDefaultAutoGuardClients(): AutoGuardClient[] {
   return [...AUTO_GUARD_CLIENTS];
+}
+
+export function getAutoGuardCompatibleClients(clients: readonly InitClient[]): AutoGuardClient[] {
+  return uniqueClients(clients.filter((client): client is AutoGuardClient => isAutoGuardClient(client)));
 }
 
 function createPosixWrapper(client: AutoGuardClient, spec: AutoGuardCommandSpec): string {

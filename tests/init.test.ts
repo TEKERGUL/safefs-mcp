@@ -100,6 +100,21 @@ describe("init", () => {
     expect(gemini).toContain("\"safefs\"");
   });
 
+  it("init accepts Antigravity without writing a fake project-local config", async () => {
+    const result = await runInit(tmpDir, {
+      yes: true,
+      clients: ["antigravity"],
+    });
+
+    expect(result.clients).toEqual(["antigravity"]);
+    await expect(fs.stat(path.join(tmpDir, ".gemini", "settings.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.stat(path.join(tmpDir, ".gemini", "config", "mcp_config.json"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("init --auto-guard creates wrappers and activation files", async () => {
     const result = await runInit(tmpDir, {
       yes: true,
@@ -112,6 +127,22 @@ describe("init", () => {
     expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude.cmd"));
     await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.ps1"))).resolves.toBeTruthy();
     await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.sh"))).resolves.toBeTruthy();
+  });
+
+  it("init --auto-guard skips Antigravity wrappers and installs only wrapper-capable clients", async () => {
+    const result = await runInit(tmpDir, {
+      yes: true,
+      clients: ["claude", "antigravity"],
+      autoGuard: true,
+    });
+
+    expect(result.autoGuard).toBeDefined();
+    expect(result.autoGuard!.clients).toEqual(["claude"]);
+    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude"));
+    expect(result.autoGuard!.created).not.toContain(path.join(".safefs", "bin", "antigravity"));
+    await expect(fs.stat(path.join(tmpDir, ".safefs", "bin", "antigravity"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("init --local auto-guard wrappers call the CLI entrypoint, not the MCP server", async () => {

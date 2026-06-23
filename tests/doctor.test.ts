@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { runDoctor } from "../src/cli/doctor.js";
 import { runInit } from "../src/cli/init.js";
+import { createMcpConfigSnippet } from "../src/cli/mcpConfig.js";
 
 let tmpDir: string;
 
@@ -76,5 +77,66 @@ describe("doctor", () => {
     } finally {
       process.env.PATH = originalPath;
     }
+  });
+
+  it("passes Antigravity check when global config points to this project", async () => {
+    const configPath = path.join(tmpDir, "home", ".gemini", "config", "mcp_config.json");
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, createMcpConfigSnippet(tmpDir, "antigravity"), "utf-8");
+    await runInit(tmpDir, { yes: true, clients: ["antigravity"] });
+
+    const result = await runDoctor(tmpDir, {
+      antigravity: true,
+      antigravityConfigPath: configPath,
+    });
+    const check = result.checks.find((item) => item.name === "antigravity");
+
+    expect(check?.status).toBe("pass");
+  });
+
+  it("warns when Antigravity config is missing", async () => {
+    await runInit(tmpDir, { yes: true, clients: ["antigravity"] });
+
+    const result = await runDoctor(tmpDir, {
+      antigravity: true,
+      antigravityConfigPath: path.join(tmpDir, "missing", "mcp_config.json"),
+    });
+    const check = result.checks.find((item) => item.name === "antigravity");
+
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("not found");
+  });
+
+  it("warns when Antigravity config points to another root", async () => {
+    const configPath = path.join(tmpDir, "home", ".gemini", "config", "mcp_config.json");
+    const otherRoot = path.join(tmpDir, "other-project");
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, createMcpConfigSnippet(otherRoot, "antigravity"), "utf-8");
+    await runInit(tmpDir, { yes: true, clients: ["antigravity"] });
+
+    const result = await runDoctor(tmpDir, {
+      antigravity: true,
+      antigravityConfigPath: configPath,
+    });
+    const check = result.checks.find((item) => item.name === "antigravity");
+
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("not this project");
+  });
+
+  it("warns when Antigravity config is malformed JSON", async () => {
+    const configPath = path.join(tmpDir, "home", ".gemini", "config", "mcp_config.json");
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.writeFile(configPath, "{", "utf-8");
+    await runInit(tmpDir, { yes: true, clients: ["antigravity"] });
+
+    const result = await runDoctor(tmpDir, {
+      antigravity: true,
+      antigravityConfigPath: configPath,
+    });
+    const check = result.checks.find((item) => item.name === "antigravity");
+
+    expect(check?.status).toBe("warn");
+    expect(check?.message).toContain("valid JSON");
   });
 });

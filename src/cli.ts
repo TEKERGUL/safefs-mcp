@@ -12,6 +12,7 @@ import { runWatch } from "./cli/watch.js";
 import { runGuard } from "./cli/guard.js";
 import {
   createAutoGuardEnvCommand,
+  getAutoGuardCompatibleClients,
   getAutoGuardStatus,
   getDefaultAutoGuardClients,
   installAutoGuard,
@@ -20,6 +21,8 @@ import {
   runAutoGuard,
   uninstallAutoGuard,
 } from "./cli/autoGuard.js";
+import { createMcpConfigSnippet, isMcpConfigClient } from "./cli/mcpConfig.js";
+import type { InitClient } from "./cli/init.js";
 import { pruneTimeline } from "./core/timelinePruning.js";
 import { collectGarbage } from "./core/objectGC.js";
 import { loadConfig } from "./config/loadConfig.js";
@@ -75,6 +78,9 @@ async function main(): Promise<void> {
     case "auto-guard":
       await handleAutoGuard();
       break;
+    case "mcp-config":
+      await handleMcpConfig();
+      break;
     case "prune":
       await handlePrune();
       break;
@@ -101,19 +107,21 @@ Usage:
   safefs watch                       Track native file edits from any client
   safefs guard -- <command>          Run a command with SafeFS watching native edits
   safefs auto-guard <subcommand>     Manage project-local auto-guard wrappers
+  safefs mcp-config <client>         Print MCP config snippets for global clients
   safefs prune [--days N] [--yes]   Preview or remove old timeline events
   safefs gc [--yes]                 Preview or remove unreferenced objects
   safefs storage                     Show storage status
 
 Init options:
   --yes                      Run non-interactively
-  --clients <list>           Comma-separated clients: codex,cursor,claude,gemini
+  --clients <list>           Comma-separated clients: codex,cursor,claude,gemini,antigravity
   --local                    Write MCP configs that run this local checkout with node
   --auto-guard               Install project-local wrappers for selected clients
 
 Doctor options:
   --online                   Check whether the npm package is reachable
   --gemini-smoke             Check whether Gemini CLI can see the SafeFS MCP config
+  --antigravity              Check Antigravity global MCP config for this project
 
 Watch options:
   --interval <ms>            Polling interval (default: 1000)
@@ -127,6 +135,9 @@ Auto-guard subcommands:
   env [powershell|cmd|bash|zsh]
                             Print the current-shell activation command
   run <client> -- [args...] Internal wrapper entrypoint
+
+MCP config snippets:
+  antigravity                Print JSON for ~/.gemini/config/mcp_config.json
 
 Global options:
   --root <path>              Project root (defaults to current directory)
@@ -142,8 +153,9 @@ Rollback options:
   --dry-run         Preview without applying (default)
 
 Examples:
-  safefs init --yes --clients codex,cursor,claude,gemini
+  safefs init --yes --clients codex,cursor,claude,gemini,antigravity
   node dist/cli.js init --local --yes --clients gemini
+  safefs mcp-config antigravity
   safefs timeline --since 3h
   safefs diff 1h
   safefs watch
@@ -233,6 +245,7 @@ async function handleDoctor(): Promise<void> {
   const result = await runDoctor(root, {
     online: args.includes("--online"),
     geminiSmoke: args.includes("--gemini-smoke"),
+    antigravity: args.includes("--antigravity"),
   });
   if (!result.ok) {
     process.exitCode = 1;
@@ -260,10 +273,18 @@ async function handleGuard(): Promise<void> {
 async function handleAutoGuard(): Promise<void> {
   const root = resolveRoot();
   const subcommand = args[1];
-  const clients = parseClients(getFlag("--clients")) ?? getDefaultAutoGuardClients();
+  const requestedClients = parseClients(getFlag("--clients"));
+  const clients = requestedClients
+    ? getAutoGuardCompatibleClients(requestedClients)
+    : getDefaultAutoGuardClients();
 
   switch (subcommand) {
     case "install": {
+      if (clients.length === 0) {
+        console.error("Error: no wrapper-capable clients selected. Antigravity is watch-first; use `safefs watch`.");
+        process.exitCode = 1;
+        return;
+      }
       const result = await installAutoGuard(root, {
         clients,
         commandSpec: resolveAutoGuardCommandSpec(),
@@ -292,7 +313,7 @@ async function handleAutoGuard(): Promise<void> {
     case "run": {
       const client = args[2];
       if (!client || !isAutoGuardClient(client)) {
-        console.error("Error: auto-guard run requires a client: claude, codex, cursor, or gemini.");
+        console.error("Error: auto-guard run requires a wrapper-capable client: claude, codex, cursor, or gemini.");
         process.exitCode = 1;
         return;
       }
@@ -305,6 +326,19 @@ async function handleAutoGuard(): Promise<void> {
       console.error("Usage: safefs auto-guard install|status|uninstall|env|run");
       process.exitCode = 1;
   }
+}
+
+async function handleMcpConfig(): Promise<void> {
+  const root = resolveRoot();
+  const client = args[1];
+  if (!client || !isMcpConfigClient(client)) {
+    console.error("Error: mcp-config requires a supported client.");
+    console.error("Example: safefs mcp-config antigravity");
+    process.exitCode = 1;
+    return;
+  }
+
+  process.stdout.write(createMcpConfigSnippet(root, client));
 }
 
 function resolveAutoGuardCommandSpec(): { command: string; args: string[] } {
@@ -423,14 +457,14 @@ function parseOptionalNumberFlag(name: string): number | undefined {
 
 function parseClients(
   value: string | undefined
-): Array<"codex" | "cursor" | "claude" | "gemini"> | undefined {
+): InitClient[] | undefined {
   if (!value) return undefined;
 
-  const allowed = new Set(["codex", "cursor", "claude", "gemini"]);
+  const allowed = new Set<InitClient>(["codex", "cursor", "claude", "gemini", "antigravity"]);
   return value
     .split(",")
     .map((client) => client.trim().toLowerCase())
-    .filter((client): client is "codex" | "cursor" | "claude" | "gemini" => allowed.has(client));
+    .filter((client): client is InitClient => allowed.has(client as InitClient));
 }
 
 main().catch((err) => {

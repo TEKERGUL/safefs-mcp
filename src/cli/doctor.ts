@@ -1,5 +1,6 @@
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -32,6 +33,8 @@ export interface DoctorResult {
 export interface DoctorOptions {
   geminiSmoke?: boolean;
   online?: boolean;
+  antigravity?: boolean;
+  antigravityConfigPath?: string;
 }
 
 interface ParsedMcpConfig {
@@ -75,6 +78,9 @@ export async function runDoctor(
   checks.push(await checkPackageBinary(root));
   if (options.online) checks.push(await checkNpmPackageReachable());
   if (options.geminiSmoke) checks.push(await checkGeminiSmoke(root));
+  if (options.antigravity) {
+    checks.push(await checkAntigravityConfig(root, options.antigravityConfigPath));
+  }
 
   printDoctor(checks);
   return {
@@ -218,6 +224,86 @@ async function checkAutoGuard(root: string): Promise<DoctorCheck> {
     message: `Auto-guard active for: ${installedClients.map((client) => client.client).join(", ")}.`,
   };
 }
+
+async function checkAntigravityConfig(
+  root: string,
+  configPath = getDefaultAntigravityConfigPath()
+): Promise<DoctorCheck> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(configPath, "utf-8");
+  } catch {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: `Antigravity MCP config not found at ${configPath}. Run \`safefs mcp-config antigravity\` and paste the snippet into that file.`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: `Antigravity MCP config at ${configPath} is not valid JSON.`,
+    };
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.mcpServers) || !isRecord(parsed.mcpServers.safefs)) {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: `Antigravity MCP config does not contain mcpServers.safefs. Run \`safefs mcp-config antigravity\` for the snippet.`,
+    };
+  }
+
+  const safefs = parsed.mcpServers.safefs;
+  const command = typeof safefs.command === "string" ? safefs.command : undefined;
+  const args = Array.isArray(safefs.args)
+    ? safefs.args.filter((arg): arg is string => typeof arg === "string")
+    : [];
+
+  if (!command || !isRecognizedMcpCommand(command)) {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: "Antigravity SafeFS config should use a recognizable `npx` or `node` command.",
+    };
+  }
+
+  const rootArg = getArgValue(args, "--root");
+  if (!rootArg) {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: "Antigravity SafeFS config is missing `--root <absolute-project-root>`.",
+    };
+  }
+
+  if (!path.isAbsolute(rootArg)) {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: `Antigravity SafeFS config uses a relative root (${rootArg}). Re-run \`safefs mcp-config antigravity\` from this project.`,
+    };
+  }
+
+  if (normalizePathForCompare(rootArg) !== normalizePathForCompare(root)) {
+    return {
+      name: "antigravity",
+      status: "warn",
+      message: `Antigravity SafeFS config points to ${rootArg}, not this project (${path.resolve(root)}).`,
+    };
+  }
+
+  return {
+    name: "antigravity",
+    status: "pass",
+    message: "Antigravity MCP config contains SafeFS for this project.",
+  };
+}
 async function checkInstallMode(root: string): Promise<DoctorCheck | undefined> {
   const configs = await readMcpConfigs(root);
   if (configs.length === 0) return undefined;
@@ -341,6 +427,26 @@ function parseQuotedString(raw: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function getDefaultAntigravityConfigPath(): string {
+  return path.join(os.homedir(), ".gemini", "config", "mcp_config.json");
+}
+
+function isRecognizedMcpCommand(command: string): boolean {
+  const basename = path.basename(command).toLowerCase().replace(/\.(cmd|exe)$/i, "");
+  return basename === "npx" || basename === "node";
+}
+
+function getArgValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  return args[index + 1];
+}
+
+function normalizePathForCompare(value: string): string {
+  const normalized = path.resolve(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 function isNpmConfig(config: ParsedMcpConfig): boolean {

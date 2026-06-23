@@ -38,6 +38,19 @@ describe("auto-guard", () => {
     expect(cmdWrapper).toContain("auto-guard run claude --");
   });
 
+  it("does not create wrappers for Antigravity because it is watch-first", async () => {
+    const result = await installAutoGuard(tmpDir, { clients: ["antigravity"] });
+
+    expect(result.clients).toEqual([]);
+    expect(result.created).toEqual([]);
+    await expect(fs.stat(path.join(tmpDir, ".safefs", "bin", "antigravity"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.ps1"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("does not overwrite existing wrapper files", async () => {
     const wrapperPath = path.join(tmpDir, ".safefs", "bin", "claude");
     await fs.mkdir(path.dirname(wrapperPath), { recursive: true });

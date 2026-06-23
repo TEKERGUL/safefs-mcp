@@ -12,6 +12,7 @@ Use SafeFS MCP tools for recovery and inspection:
 Legacy write tools may exist for compatibility, but guard/watch mode is preferred for normal edits.
 
 Note for Gemini CLI: MCP tools may appear with the server alias prefix, such as `mcp_safefs_safe_diff`.
+Note for Antigravity: use `safefs mcp-config antigravity` for the global MCP snippet, and run `safefs watch` while using the IDE.
 
 Safety rules:
 
