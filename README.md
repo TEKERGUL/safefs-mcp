@@ -88,6 +88,7 @@ SafeFS restores the pre-change state for the affected files while leaving unrela
 - Works when agents use native edit tools through guard/watch or project-local auto-guard
 - Roll back AI changes from `10m`, `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
 - Preview rollback as readable unified diffs before applying changes
+- Restore one damaged file from its latest checkpoint without touching other files
 - Restore one file without resetting the whole project
 - Skip conflicts when files changed after the recorded edit
 - Ignore protected paths, secrets, vendor folders, build output, binary files, and large files by default
@@ -189,6 +190,7 @@ SafeFS remains an MCP server. The watcher/auto-guard layer captures native edits
 - `safe_read_file`
 - `safe_diff`
 - `safe_timeline`
+- `safe_restore_file`
 - `safe_rollback_time`
 - `safe_storage_status`
 
@@ -224,6 +226,17 @@ safefs rollback 10m --yes
 ```
 
 Typical dry-run output separates restored files, created files that would be deleted, conflicts, and skipped files. Conflict reports include expected and current hashes so you can decide whether to keep manual edits, inspect the diff, or retry with a narrower path.
+
+For a single damaged file, MCP clients can use `safe_restore_file` instead of rolling back the whole time window:
+
+```json
+{
+  "path": "src/utils.ts",
+  "dryRun": true
+}
+```
+
+`checkpointId` is optional. If omitted, SafeFS restores from the latest committed checkpoint for that file. Applying still requires `dryRun: false` and `confirm: true`.
 
 ## Security Model
 
@@ -364,6 +377,7 @@ enabled_tools = [
   "safe_read_file",
   "safe_diff",
   "safe_timeline",
+  "safe_restore_file",
   "safe_rollback_time",
   "safe_storage_status"
 ]
@@ -384,7 +398,7 @@ SafeFS is built as three cooperating layers: an MCP control layer, a native edit
 ```mermaid
 flowchart TD
   A["AI coding client<br/>Claude, Codex, Cursor, Antigravity, Gemini"] --> B["Native edit path<br/>editor tools, terminal, agent writes"]
-  A --> C["MCP control layer<br/>safe_diff, safe_timeline, safe_rollback_time"]
+  A --> C["MCP control layer<br/>safe_diff, safe_timeline, safe_restore_file, safe_rollback_time"]
   B --> D["Guard / watch layer<br/>stable writes, excludes, move detection"]
   D --> E["Path safety and policy<br/>protected patterns, symlinks, size limits, rate limits"]
   E --> F["Object store<br/>.safefs/objects, optional gzip"]
@@ -405,8 +419,9 @@ flowchart TD
 4. Large bursts are recorded up to the per-cycle limit; remaining stable changes stay pending for the next cycle.
 5. Timeline events record committed file changes, including write, delete, and move operations.
 6. `safe_diff` and `safefs diff` compute what rollback would restore.
-7. `safe_rollback_time` and `safefs rollback` validate current hashes before changing files.
-8. Rollback suppression prevents SafeFS from recording its own restore operation as a fresh edit.
+7. `safe_restore_file` restores one selected file from a checkpoint without touching unrelated files.
+8. `safe_rollback_time` and `safefs rollback` validate current hashes before changing files.
+9. Rollback suppression prevents SafeFS from recording its own restore operation as a fresh edit.
 
 ### Design Principles
 

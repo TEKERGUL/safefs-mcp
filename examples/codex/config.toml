@@ -9,6 +9,7 @@ enabled_tools = [
   "safe_read_file",
   "safe_diff",
   "safe_timeline",
+  "safe_restore_file",
   "safe_rollback_time",
   "safe_storage_status"
 ]

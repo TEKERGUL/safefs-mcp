@@ -7,6 +7,7 @@ import { safePatch } from "./tools/safePatch.js";
 import { safeDelete } from "./tools/safeDelete.js";
 import { safeDiff } from "./tools/safeDiff.js";
 import { safeTimeline } from "./tools/safeTimeline.js";
+import { safeRestoreFile } from "./tools/safeRestoreFile.js";
 import { safeRollbackTime } from "./tools/safeRollbackTime.js";
 import { safeStorageStatus } from "./tools/safeStorageStatus.js";
 import { SafeFSError } from "./types/index.js";
@@ -127,6 +128,35 @@ export function createServer(root: string): McpServer {
       try {
         const config = await loadConfigCached(root);
         const result = await safeTimeline({ root, since, until, path: filePath, sessionId, limit, config });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return formatError(err);
+      }
+    }
+  );
+
+  server.tool(
+    "safe_restore_file",
+    "Restore one file from a SafeFS checkpoint without touching the rest of the workspace. Defaults to dry-run.",
+    {
+      path: z.string().min(1).describe("Relative path to restore within the workspace"),
+      checkpointId: z.string().optional().describe("SafeFS eventId/checkpoint to restore from. Defaults to the latest checkpoint for this file."),
+      checkpoint_id: z.string().optional().describe("Snake_case alias for checkpointId."),
+      dryRun: z.boolean().optional().describe("Preview without applying (default: true)"),
+      dry_run: z.boolean().optional().describe("Snake_case alias for dryRun."),
+      confirm: z.boolean().optional().describe("Confirm restore application (required with dryRun: false)"),
+    },
+    async ({ path: filePath, checkpointId, checkpoint_id, dryRun, dry_run, confirm }) => {
+      try {
+        const config = await loadConfigCached(root);
+        const result = await safeRestoreFile({
+          root,
+          path: filePath,
+          checkpointId: checkpointId ?? checkpoint_id,
+          dryRun: dryRun ?? dry_run,
+          confirm,
+          config,
+        });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
         return formatError(err);

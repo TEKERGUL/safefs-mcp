@@ -5,6 +5,7 @@ export type RiskLevel = "low" | "medium" | "high" | "blocked";
 export type TimelineStatus = "pending" | "committed" | "failed";
 
 export type RollbackActionType = "restore" | "delete_created" | "move_back";
+export type RestoreFileActionType = "restore" | "delete_created_file" | "move_back";
 
 export interface PatchMetadata {
   search?: string;
@@ -142,6 +143,22 @@ export interface DiffResult {
     conflicts: number;
     skipped: number;
   };
+}
+
+export interface RestoreFileResult {
+  success: true;
+  dryRun: boolean;
+  path: string;
+  checkpointId: string;
+  action: RestoreFileActionType;
+  targetHash: string | null;
+  expectedHash: string | null;
+  currentHash: string | null;
+  applied: boolean;
+  deleted: boolean;
+  rollbackEventId?: string;
+  rollbackOf: string[];
+  conflicts: ConflictDetail[];
 }
 
 export class SafeFSError extends Error {

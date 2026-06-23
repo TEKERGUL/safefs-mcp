@@ -6,6 +6,7 @@ Use SafeFS MCP tools for recovery and inspection:
 
 - Use `safe_diff` to preview rollback changes.
 - Use `safe_timeline` to inspect recent agent changes.
+- Use `safe_restore_file` to restore one damaged file without touching the rest of the workspace.
 - Use `safe_rollback_time` with `dryRun: true` before applying rollback.
 - Use `safe_storage_status` to inspect SafeFS storage.
 

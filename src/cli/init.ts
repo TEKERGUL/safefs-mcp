@@ -49,6 +49,7 @@ const AGENTS_MD = [
   "",
   "- Use `safe_diff` to preview rollback changes.",
   "- Use `safe_timeline` to inspect recent agent changes.",
+  "- Use `safe_restore_file` to restore one damaged file without touching the rest of the workspace.",
   "- Use `safe_rollback_time` with `dryRun: true` before applying rollback.",
   "- Use `safe_storage_status` to inspect SafeFS storage.",
   "",
@@ -270,6 +271,7 @@ enabled_tools = [
   "safe_read_file",
   "safe_diff",
   "safe_timeline",
+  "safe_restore_file",
   "safe_rollback_time",
   "safe_storage_status"
 ]

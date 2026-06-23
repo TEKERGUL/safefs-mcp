@@ -39,6 +39,7 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini,antigra
 ## Notes
 
 - SafeFS remains an MCP server for diff, timeline, rollback, and storage status.
+- `safe_restore_file` restores one damaged file from a checkpoint without rolling back unrelated files.
 - Auto-guard/watch captures native file edits, so agents do not need to use legacy SafeFS write tools.
 - Gemini CLI tools are exposed with fully qualified names like `mcp_safefs_safe_diff`.
 - Antigravity is watch-first because its MCP config is global/shared; run `safefs watch` while using the IDE.
