@@ -69,5 +69,6 @@ Use GitHub Security Advisories or email the maintainer listed for the project.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x   | Yes       |
-| 1.x     | Yes       |
+| 1.1.x   | Yes       |
+| 1.0.x   | Yes       |
+| 0.1.x   | No        |

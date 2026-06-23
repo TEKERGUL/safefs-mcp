@@ -122,6 +122,6 @@ function formatBytes(bytes: number): string {
   const k = 1024;
   let i = Math.floor(Math.log(bytes) / Math.log(k));
   if (i >= units.length) i = units.length - 1;
-  const val = bytes / Math.pow(k, i);
+  const val = bytes / k ** i;
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }

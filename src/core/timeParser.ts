@@ -35,7 +35,7 @@ export function parseTimeInput(input: string): Date {
   }
 
   const isoDate = new Date(trimmed);
-  if (!isNaN(isoDate.getTime()) && trimmed.includes("T")) {
+  if (!Number.isNaN(isoDate.getTime()) && trimmed.includes("T")) {
     return isoDate;
   }
 

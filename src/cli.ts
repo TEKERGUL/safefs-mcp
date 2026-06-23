@@ -194,7 +194,7 @@ async function handleTimeline(): Promise<void> {
   const limitStr = getFlag("--limit");
   const limit = limitStr ? parseInt(limitStr, 10) : undefined;
 
-  if (limit !== undefined && isNaN(limit)) {
+  if (limit !== undefined && Number.isNaN(limit)) {
     console.error("Error: --limit must be a valid number.");
     process.exit(1);
   }

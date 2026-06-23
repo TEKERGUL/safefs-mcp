@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import picomatch from "picomatch";
 import {
@@ -318,7 +319,7 @@ async function scanDirectory(options: {
   };
   dryRun?: boolean;
 }): Promise<void> {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(options.directory, { withFileTypes: true });
   } catch (err) {

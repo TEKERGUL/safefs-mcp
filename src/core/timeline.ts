@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { createReadStream } from "node:fs";
+import { createReadStream, type Stats } from "node:fs";
 import { createInterface } from "node:readline";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -133,7 +133,7 @@ export async function queryRecentEvents(
   const filePath = getTimelinePath(root);
   const CHUNK_SIZE = 64 * 1024;
 
-  let stat;
+  let stat: Stats;
   try {
     stat = await fs.stat(filePath);
   } catch (err) {
@@ -190,7 +190,7 @@ export async function getTimelineBounds(
 ): Promise<{ oldest?: string; newest?: string }> {
   const filePath = getTimelinePath(root);
 
-  let stat;
+  let stat: Stats;
   try {
     stat = await fs.stat(filePath);
   } catch (err) {
