@@ -60,13 +60,17 @@ describe("watch", () => {
   it("records native file deletion and rollback restores the deleted file", async () => {
     const filePath = path.join(tmpDir, "notes.txt");
     await fs.writeFile(filePath, "keep me\n", "utf-8");
+    const config = {
+      ...DEFAULT_CONFIG,
+      watch: { ...DEFAULT_CONFIG.watch, moveDetectionWindowMs: 0 },
+    };
 
-    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config });
     await fs.unlink(filePath);
 
     const cycle = await detectWorkspaceChanges({
       root: tmpDir,
-      config: DEFAULT_CONFIG,
+      config,
       previous: baseline.snapshot,
       stableMs: 0,
     });
@@ -79,7 +83,7 @@ describe("watch", () => {
       since: "1h",
       dryRun: false,
       confirm: true,
-      config: DEFAULT_CONFIG,
+      config,
     });
 
     await expect(fs.readFile(filePath, "utf-8")).resolves.toBe("keep me\n");
@@ -195,5 +199,148 @@ describe("watch", () => {
     });
 
     await expect(fs.stat(path.join(tmpDir, "guard.txt"))).rejects.toThrow();
+  });
+  it("skips temp and atomic-save files", async () => {
+    await fs.writeFile(path.join(tmpDir, "index.ts.tmp"), "temp", "utf-8");
+    await fs.writeFile(path.join(tmpDir, ".DS_Store"), "meta", "utf-8");
+
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    expect(baseline.snapshot.has("index.ts.tmp")).toBe(false);
+    expect(baseline.snapshot.has(".DS_Store")).toBe(false);
+    expect(baseline.skippedDetails.map((item) => item.reason)).toContain("excluded");
+  });
+
+  it("defers deletes briefly to detect same-hash moves across cycles", async () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      watch: { ...DEFAULT_CONFIG.watch, moveDetectionWindowMs: 5000 },
+    };
+    const oldPath = path.join(tmpDir, "old-cycle.txt");
+    const newPath = path.join(tmpDir, "new-cycle.txt");
+    await fs.writeFile(oldPath, "same across cycles\n", "utf-8");
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config });
+
+    await fs.unlink(oldPath);
+    const deletedPending = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: baseline.snapshot,
+      stableMs: 0,
+      nowMs: 1000,
+    });
+    expect(deletedPending.events).toHaveLength(0);
+    expect(deletedPending.pending.has("old-cycle.txt")).toBe(true);
+
+    await fs.writeFile(newPath, "same across cycles\n", "utf-8");
+    const moved = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: deletedPending.snapshot,
+      pending: deletedPending.pending,
+      stableMs: 0,
+      nowMs: 2000,
+    });
+
+    expect(moved.events).toHaveLength(1);
+    expect(moved.events[0]!.operation).toBe("move");
+  });
+
+  it("records deferred deletes after the move detection window expires", async () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      watch: { ...DEFAULT_CONFIG.watch, moveDetectionWindowMs: 5000 },
+    };
+    const filePath = path.join(tmpDir, "expired-delete.txt");
+    await fs.writeFile(filePath, "gone\n", "utf-8");
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config });
+
+    await fs.unlink(filePath);
+    const pendingDelete = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: baseline.snapshot,
+      stableMs: 0,
+      nowMs: 1000,
+    });
+    const expired = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: pendingDelete.snapshot,
+      pending: pendingDelete.pending,
+      stableMs: 0,
+      nowMs: 7000,
+    });
+
+    expect(expired.events).toHaveLength(1);
+    expect(expired.events[0]!.operation).toBe("delete");
+  });
+
+  it("skips symlinks by default", async () => {
+    if (process.platform === "win32") return;
+    await fs.writeFile(path.join(tmpDir, "target.txt"), "target\n", "utf-8");
+    await fs.symlink(path.join(tmpDir, "target.txt"), path.join(tmpDir, "link.txt"));
+
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    expect(baseline.snapshot.has("link.txt")).toBe(false);
+    expect(baseline.skippedDetails).toContainEqual({ path: "link.txt", reason: "symlink" });
+  });
+
+  it("skips case-colliding paths on case-insensitive filesystems", async () => {
+    if (process.platform === "win32") return;
+    await fs.mkdir(path.join(tmpDir, ".safefs", "watch"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, ".safefs", "watch", "fs-capabilities.json"),
+      JSON.stringify({ caseSensitive: false, checkedAt: new Date().toISOString() }),
+      "utf-8"
+    );
+    await fs.writeFile(path.join(tmpDir, "Readme.md"), "one", "utf-8");
+    await fs.writeFile(path.join(tmpDir, "README.md"), "two", "utf-8");
+
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    expect(baseline.snapshot.has("Readme.md")).toBe(false);
+    expect(baseline.snapshot.has("README.md")).toBe(false);
+    expect(baseline.skippedDetails.map((item) => item.reason)).toContain("case-collision");
+  });
+
+  it("guard runs Windows .cmd shims", async () => {
+    if (process.platform !== "win32") return;
+    const shimPath = path.join(tmpDir, "agent.cmd");
+    await fs.writeFile(
+      shimPath,
+      "@echo off\r\necho changed> cmd-shim.txt\r\nexit /b 0\r\n",
+      "utf-8"
+    );
+
+    const exitCode = await runGuard(tmpDir, [shimPath]);
+
+    expect(exitCode).toBe(0);
+    await expect(fs.readFile(path.join(tmpDir, "cmd-shim.txt"), "utf-8")).resolves.toContain("changed");
+  });
+
+  it("blocks symlink targets outside the workspace even when following is enabled", async () => {
+    if (process.platform === "win32") return;
+    const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "safefs-outside-"));
+    try {
+      const outsideFile = path.join(outsideDir, "outside.txt");
+      await fs.writeFile(outsideFile, "outside\n", "utf-8");
+      await fs.symlink(outsideFile, path.join(tmpDir, "outside-link.txt"));
+      const config = {
+        ...DEFAULT_CONFIG,
+        workspace: { ...DEFAULT_CONFIG.workspace, followSymlinks: true },
+      };
+
+      const baseline = await scanWorkspaceForWatch({ root: tmpDir, config });
+
+      expect(baseline.snapshot.has("outside-link.txt")).toBe(false);
+      expect(baseline.skippedDetails).toContainEqual({
+        path: "outside-link.txt",
+        reason: "path_outside_root",
+      });
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
   });
 });

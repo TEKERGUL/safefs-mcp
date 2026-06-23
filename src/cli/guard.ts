@@ -23,18 +23,20 @@ export async function runGuard(root: string, commandArgs: string[]): Promise<num
       void watch.stop().then(() => resolve(code));
     };
 
+    const handleStartError = (err: Error, attemptedCommand: string): void => {
+      if (shouldRetryWithCmd(command!, attemptedCommand, err)) {
+        start(`${command}.cmd`);
+        return;
+      }
+
+      console.error(`SafeFS guard failed to start command: ${err.message}`);
+      finish(1);
+    };
+
     const attach = (proc: ChildProcess, attemptedCommand: string): void => {
       child = proc;
 
-      proc.once("error", (err) => {
-        if (shouldRetryWithCmd(command!, attemptedCommand, err)) {
-          attach(spawn(`${command}.cmd`, args, { cwd: root, stdio: "inherit" }), `${command}.cmd`);
-          return;
-        }
-
-        console.error(`SafeFS guard failed to start command: ${err.message}`);
-        finish(1);
-      });
+      proc.once("error", (err) => handleStartError(err, attemptedCommand));
 
       proc.once("exit", (code, signal) => {
         if (signal) {
@@ -45,14 +47,34 @@ export async function runGuard(root: string, commandArgs: string[]): Promise<num
       });
     };
 
+    const start = (attemptedCommand: string): void => {
+      try {
+        attach(spawnGuardProcess(attemptedCommand, args, root), attemptedCommand);
+      } catch (err) {
+        handleStartError(err as Error, attemptedCommand);
+      }
+    };
+
     function onSigint(): void {
       child?.kill("SIGINT");
       finish(130);
     }
 
     process.once("SIGINT", onSigint);
-    attach(spawn(command!, args, { cwd: root, stdio: "inherit" }), command!);
+    start(command!);
   });
+}
+
+function spawnGuardProcess(command: string, args: string[], root: string): ChildProcess {
+  return spawn(command, args, {
+    cwd: root,
+    stdio: "inherit",
+    shell: shouldUseWindowsShell(command),
+  });
+}
+
+function shouldUseWindowsShell(command: string): boolean {
+  return process.platform === "win32" && /\.(cmd|bat)$/i.test(command);
 }
 
 function shouldRetryWithCmd(
@@ -63,7 +85,7 @@ function shouldRetryWithCmd(
   const code = (err as NodeJS.ErrnoException).code;
   return (
     process.platform === "win32" &&
-    code === "ENOENT" &&
+    (code === "ENOENT" || code === "EINVAL") &&
     attemptedCommand === originalCommand &&
     path.extname(originalCommand) === "" &&
     !originalCommand.includes(path.sep) &&

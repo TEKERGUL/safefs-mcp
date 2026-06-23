@@ -10,6 +10,16 @@ import { runStorage } from "./cli/storage.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runWatch } from "./cli/watch.js";
 import { runGuard } from "./cli/guard.js";
+import {
+  createAutoGuardEnvCommand,
+  getAutoGuardStatus,
+  getDefaultAutoGuardClients,
+  installAutoGuard,
+  isAutoGuardClient,
+  printAutoGuardStatus,
+  runAutoGuard,
+  uninstallAutoGuard,
+} from "./cli/autoGuard.js";
 import { pruneTimeline } from "./core/timelinePruning.js";
 import { collectGarbage } from "./core/objectGC.js";
 import { loadConfig } from "./config/loadConfig.js";
@@ -62,6 +72,9 @@ async function main(): Promise<void> {
     case "guard":
       await handleGuard();
       break;
+    case "auto-guard":
+      await handleAutoGuard();
+      break;
     case "prune":
       await handlePrune();
       break;
@@ -87,6 +100,7 @@ Usage:
   safefs doctor                      Check SafeFS setup health
   safefs watch                       Track native file edits from any client
   safefs guard -- <command>          Run a command with SafeFS watching native edits
+  safefs auto-guard <subcommand>     Manage project-local auto-guard wrappers
   safefs prune [--days N] [--yes]   Preview or remove old timeline events
   safefs gc [--yes]                 Preview or remove unreferenced objects
   safefs storage                     Show storage status
@@ -95,6 +109,7 @@ Init options:
   --yes                      Run non-interactively
   --clients <list>           Comma-separated clients: codex,cursor,claude,gemini
   --local                    Write MCP configs that run this local checkout with node
+  --auto-guard               Install project-local wrappers for selected clients
 
 Doctor options:
   --online                   Check whether the npm package is reachable
@@ -104,6 +119,14 @@ Watch options:
   --interval <ms>            Polling interval (default: 1000)
   --once                     Build baseline and exit
   --dry-run                  Show watch baseline summary without writing SafeFS state
+
+Auto-guard subcommands:
+  install [--clients <list>] Install project-local wrappers
+  status                    Show wrapper, PATH, and real-client health
+  uninstall                 Remove only SafeFS-managed wrappers and activation files
+  env [powershell|cmd|bash|zsh]
+                            Print the current-shell activation command
+  run <client> -- [args...] Internal wrapper entrypoint
 
 Global options:
   --root <path>              Project root (defaults to current directory)
@@ -125,6 +148,7 @@ Examples:
   safefs diff 1h
   safefs watch
   safefs guard -- claude
+  safefs auto-guard install --clients claude,codex
   safefs rollback 1h
   safefs rollback 1h --yes
   safefs rollback 3h --path src/auth/login.ts --yes
@@ -140,6 +164,7 @@ async function handleInit(): Promise<void> {
     clients: parseClients(getFlag("--clients")),
     local: args.includes("--local"),
     localCliPath: resolveCurrentCliPath(),
+    autoGuard: args.includes("--auto-guard") ? true : undefined,
   });
 }
 
@@ -232,6 +257,73 @@ async function handleGuard(): Promise<void> {
   process.exitCode = exitCode;
 }
 
+async function handleAutoGuard(): Promise<void> {
+  const root = resolveRoot();
+  const subcommand = args[1];
+  const clients = parseClients(getFlag("--clients")) ?? getDefaultAutoGuardClients();
+
+  switch (subcommand) {
+    case "install": {
+      const result = await installAutoGuard(root, {
+        clients,
+        commandSpec: resolveAutoGuardCommandSpec(),
+      });
+      console.log("SafeFS auto-guard installed.");
+      console.log(`Created: ${result.created.length} | Skipped: ${result.skipped.length}`);
+      console.log("Next:");
+      console.log(`  ${createAutoGuardEnvCommand(root, defaultAutoGuardShell())}`);
+      break;
+    }
+    case "status": {
+      printAutoGuardStatus(await getAutoGuardStatus(root, clients));
+      break;
+    }
+    case "uninstall": {
+      const result = await uninstallAutoGuard(root);
+      console.log("SafeFS auto-guard uninstalled.");
+      console.log(`Removed: ${result.removed.length} | Skipped: ${result.skipped.length}`);
+      break;
+    }
+    case "env": {
+      const shell = parseAutoGuardShell(args[2]) ?? defaultAutoGuardShell();
+      console.log(createAutoGuardEnvCommand(root, shell));
+      break;
+    }
+    case "run": {
+      const client = args[2];
+      if (!client || !isAutoGuardClient(client)) {
+        console.error("Error: auto-guard run requires a client: claude, codex, cursor, or gemini.");
+        process.exitCode = 1;
+        return;
+      }
+      const separatorIndex = args.indexOf("--");
+      const passthroughArgs = separatorIndex === -1 ? args.slice(3) : args.slice(separatorIndex + 1);
+      process.exitCode = await runAutoGuard(root, client, passthroughArgs);
+      break;
+    }
+    default:
+      console.error("Usage: safefs auto-guard install|status|uninstall|env|run");
+      process.exitCode = 1;
+  }
+}
+
+function resolveAutoGuardCommandSpec(): { command: string; args: string[] } {
+  if (args.includes("--local")) {
+    return { command: "node", args: [resolveCurrentCliPath()] };
+  }
+  return { command: "safefs", args: [] };
+}
+
+function parseAutoGuardShell(value: string | undefined): "powershell" | "cmd" | "bash" | "zsh" | undefined {
+  if (value === "powershell" || value === "cmd" || value === "bash" || value === "zsh") {
+    return value;
+  }
+  return undefined;
+}
+
+function defaultAutoGuardShell(): "powershell" | "bash" {
+  return process.platform === "win32" ? "powershell" : "bash";
+}
 async function handlePrune(): Promise<void> {
   const root = resolveRoot();
   const config = await loadConfig(root);

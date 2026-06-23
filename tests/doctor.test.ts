@@ -50,4 +50,31 @@ describe("doctor", () => {
     expect(installMode?.status).toBe("pass");
     expect(installMode?.message).toContain("local checkout");
   });
+
+  it("reports auto-guard as active when wrappers are on PATH", async () => {
+    const originalPath = process.env.PATH;
+    try {
+      await runInit(tmpDir, {
+        yes: true,
+        clients: ["claude"],
+        autoGuard: true,
+      });
+
+      const safefsBin = path.join(tmpDir, ".safefs", "bin");
+      const realBin = path.join(tmpDir, "real-bin");
+      await fs.mkdir(realBin, { recursive: true });
+      const executableName = process.platform === "win32" ? "claude.cmd" : "claude";
+      const realCommand = path.join(realBin, executableName);
+      await fs.writeFile(realCommand, process.platform === "win32" ? "@echo off\n" : "#!/usr/bin/env sh\n", "utf-8");
+      await fs.chmod(realCommand, 0o755);
+      process.env.PATH = `${safefsBin}${path.delimiter}${realBin}`;
+
+      const result = await runDoctor(tmpDir);
+      const autoGuard = result.checks.find((check) => check.name === "auto-guard");
+
+      expect(autoGuard?.status).toBe("pass");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
 });

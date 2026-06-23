@@ -8,6 +8,7 @@ import {
 } from "./externalChangeRecorder.js";
 import { resolveSafePath } from "./pathSafety.js";
 import { loadSuppressionState, isPathSuppressedBy } from "./suppression.js";
+import { detectFsCapabilities } from "./fsCapabilities.js";
 import type { ExternalChangeResult, FileSnapshot } from "./externalChangeRecorder.js";
 import type { SafeFSConfig } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
@@ -83,10 +84,16 @@ export async function scanWorkspaceForWatch(options: {
   const root = path.resolve(options.root);
   const snapshot: WatchSnapshot = new Map();
   const skippedDetails: WatchSkipDetail[] = [];
+  const capabilities = await detectFsCapabilities(root, { writeCache: !options.dryRun });
   const matchers = await getOrCreateWatchMatchers(root, options.config);
   const budget = {
     usedBytes: 0,
     maxBytes: options.config.watch.maxSnapshotBytesMB * 1024 * 1024,
+  };
+  const caseTracking = {
+    caseSensitive: capabilities.caseSensitive,
+    keys: new Map<string, string>(),
+    collisions: new Set<string>(),
   };
 
   await scanDirectory({
@@ -98,6 +105,7 @@ export async function scanWorkspaceForWatch(options: {
     skippedDetails,
     matchers,
     budget,
+    caseTracking,
     dryRun: options.dryRun,
   });
 
@@ -118,6 +126,7 @@ export async function detectWorkspaceChanges(options: {
   sessionId?: string;
   nowMs?: number;
   stableMs?: number;
+  flush?: boolean;
 }): Promise<WatchCycleResult> {
   const nowMs = options.nowMs ?? Date.now();
   const stableMs = options.stableMs ?? options.config.watch.debounceMs;
@@ -126,14 +135,19 @@ export async function detectWorkspaceChanges(options: {
     config: options.config,
     previous: options.previous,
   });
-  const paths = new Set([...options.previous.keys(), ...scan.snapshot.keys()]);
+  const paths = new Set([
+    ...options.previous.keys(),
+    ...scan.snapshot.keys(),
+    ...(options.pending?.keys() ?? []),
+  ]);
   const nextPending: WatchPendingChanges = new Map();
   const stableChanges: WatchPendingChange[] = [];
   const nextSnapshot: WatchSnapshot = new Map(options.previous);
   const suppression = await loadSuppressionState(options.root);
 
   for (const filePath of [...paths].sort()) {
-    const before = options.previous.get(filePath) ?? null;
+    const existing = options.pending?.get(filePath);
+    const before = existing?.before ?? options.previous.get(filePath) ?? null;
     const after = scan.snapshot.get(filePath) ?? null;
     if (before?.hash === after?.hash) {
       if (after) nextSnapshot.set(filePath, after);
@@ -146,7 +160,6 @@ export async function detectWorkspaceChanges(options: {
     }
 
     const signature = createChangeSignature(before, after);
-    const existing = options.pending?.get(filePath);
     const pendingChange: WatchPendingChange =
       existing && existing.signature === signature
         ? existing
@@ -165,10 +178,19 @@ export async function detectWorkspaceChanges(options: {
     }
   }
 
+  const deferredChanges = deferDeletesForMoveDetection({
+    stableChanges,
+    nextPending,
+    nowMs,
+    stableMs,
+    moveDetectionWindowMs: options.config.watch.moveDetectionWindowMs,
+    flush: options.flush ?? false,
+  });
+
   const events = await recordStableChanges({
     root: options.root,
     config: options.config,
-    stableChanges,
+    stableChanges: deferredChanges,
     nextSnapshot,
     tool: options.tool ?? "safefs_watch",
     sessionId: options.sessionId,
@@ -184,6 +206,42 @@ export async function detectWorkspaceChanges(options: {
   };
 }
 
+function deferDeletesForMoveDetection(options: {
+  stableChanges: WatchPendingChange[];
+  nextPending: WatchPendingChanges;
+  nowMs: number;
+  stableMs: number;
+  moveDetectionWindowMs: number;
+  flush: boolean;
+}): WatchPendingChange[] {
+  if (options.flush || options.moveDetectionWindowMs <= 0) {
+    return options.stableChanges;
+  }
+
+  const creates = options.stableChanges.filter((change) => !change.before && change.after);
+  const recordable: WatchPendingChange[] = [];
+
+  for (const change of options.stableChanges) {
+    const isDelete = change.before && !change.after;
+    if (!isDelete) {
+      recordable.push(change);
+      continue;
+    }
+
+    const hasMatchingCreate = creates.some(
+      (candidate) => candidate.after?.hash === change.before?.hash
+    );
+    const ageMs = options.nowMs - change.firstSeenMs;
+    if (!hasMatchingCreate && ageMs < options.stableMs + options.moveDetectionWindowMs) {
+      options.nextPending.set(change.path, change);
+      continue;
+    }
+
+    recordable.push(change);
+  }
+
+  return recordable;
+}
 async function recordStableChanges(options: {
   root: string;
   config: SafeFSConfig;
@@ -253,6 +311,11 @@ async function scanDirectory(options: {
   skippedDetails: WatchSkipDetail[];
   matchers: WatchMatchers;
   budget: { usedBytes: number; maxBytes: number };
+  caseTracking: {
+    caseSensitive: boolean;
+    keys: Map<string, string>;
+    collisions: Set<string>;
+  };
   dryRun?: boolean;
 }): Promise<void> {
   let entries;
@@ -262,7 +325,7 @@ async function scanDirectory(options: {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EPERM" || code === "EACCES" || code === "EBUSY" || code === "ENOENT") {
       const relativePath = toPosixRelative(options.root, options.directory);
-      if (relativePath) addSkip(options.skippedDetails, relativePath, `error:${code.toLowerCase()}`);
+      if (relativePath) addSkip(options.skippedDetails, relativePath, mapFsErrorReason(code) ?? `error:${code.toLowerCase()}`);
       return;
     }
     throw err;
@@ -272,6 +335,50 @@ async function scanDirectory(options: {
     const absolutePath = path.join(options.directory, entry.name);
     const relativePath = toPosixRelative(options.root, absolutePath);
     if (!relativePath) continue;
+
+    if (!registerCasePath(options, relativePath)) {
+      addSkip(options.skippedDetails, relativePath, "case-collision");
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      if (!options.config.workspace.followSymlinks) {
+        addSkip(options.skippedDetails, relativePath, "symlink");
+        continue;
+      }
+
+      const skipReason = await shouldSkipPath(options.root, relativePath, options.config, options.matchers);
+      if (skipReason) {
+        addSkip(options.skippedDetails, relativePath, skipReason);
+        continue;
+      }
+
+      const targetSkipReason = await getSymlinkTargetSkipReason(
+        options.root,
+        absolutePath,
+        options.config,
+        options.matchers
+      );
+      if (targetSkipReason) {
+        addSkip(options.skippedDetails, relativePath, targetSkipReason);
+        continue;
+      }
+
+      try {
+        const stat = await fs.stat(absolutePath);
+        if (stat.isDirectory()) {
+          await scanDirectory({ ...options, directory: absolutePath });
+          continue;
+        }
+        if (stat.isFile()) {
+          await scanFile(options, absolutePath, relativePath, stat);
+        }
+      } catch (err) {
+        if (handleSkippableFsError(options.skippedDetails, relativePath, err)) continue;
+        throw err;
+      }
+      continue;
+    }
 
     if (entry.isDirectory()) {
       const skipReason = await shouldSkipPath(options.root, relativePath, options.config, options.matchers);
@@ -296,53 +403,147 @@ async function scanDirectory(options: {
       continue;
     }
 
-    const previous = options.previous?.get(relativePath);
     try {
-      const stat = await fs.stat(absolutePath);
-      if (stat.size > options.config.watch.maxFileSizeMB * 1024 * 1024) {
-        addSkip(options.skippedDetails, relativePath, "too-large");
-        continue;
-      }
-
-      if (previous && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs) {
-        options.snapshot.set(relativePath, previous);
-        options.budget.usedBytes += previous.size;
-        continue;
-      }
-
-      if (options.budget.usedBytes + stat.size > options.budget.maxBytes) {
-        addSkip(options.skippedDetails, relativePath, "snapshot-budget");
-        continue;
-      }
-
-      const fileSnapshot = await snapshotFileForExternalTracking({
-        root: options.root,
-        path: relativePath,
-        config: options.config,
-        maxFileSizeMB: options.config.watch.maxFileSizeMB,
-        skipBinary: true,
-        dryRun: options.dryRun,
-      });
-
-      if (fileSnapshot) {
-        options.snapshot.set(relativePath, fileSnapshot);
-        options.budget.usedBytes += fileSnapshot.size;
-      }
+      await scanFile(options, absolutePath, relativePath);
     } catch (err) {
-      if (isSkippableSafeFSError(err)) {
-        addSkip(options.skippedDetails, relativePath, (err as SafeFSError).code.toLowerCase());
-        continue;
-      }
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === "EPERM" || code === "EACCES" || code === "EBUSY" || code === "ENOENT") {
-        addSkip(options.skippedDetails, relativePath, `error:${code.toLowerCase()}`);
-        continue;
-      }
+      if (handleSkippableFsError(options.skippedDetails, relativePath, err)) continue;
       throw err;
     }
   }
 }
 
+async function getSymlinkTargetSkipReason(
+  root: string,
+  absolutePath: string,
+  config: SafeFSConfig,
+  matchers: WatchMatchers
+): Promise<string | undefined> {
+  try {
+    const [realRoot, realPath] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(absolutePath),
+    ]);
+    const relativePath = path.relative(realRoot, realPath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      return "path_outside_root";
+    }
+
+    const posixRelative = relativePath.split(path.sep).join("/");
+    if (!posixRelative) return undefined;
+    return await shouldSkipPath(root, posixRelative, config, matchers);
+  } catch (err) {
+    if (err instanceof SafeFSError) return err.code.toLowerCase();
+    return mapFsErrorReason((err as NodeJS.ErrnoException).code);
+  }
+}
+
+async function scanFile(
+  options: {
+    root: string;
+    config: SafeFSConfig;
+    previous?: WatchSnapshot;
+    snapshot: WatchSnapshot;
+    skippedDetails: WatchSkipDetail[];
+    budget: { usedBytes: number; maxBytes: number };
+    dryRun?: boolean;
+  },
+  absolutePath: string,
+  relativePath: string,
+  existingStat?: { size: number; mtimeMs: number }
+): Promise<void> {
+  const previous = options.previous?.get(relativePath);
+  const stat = existingStat ?? await fs.stat(absolutePath);
+  if (stat.size > options.config.watch.maxFileSizeMB * 1024 * 1024) {
+    addSkip(options.skippedDetails, relativePath, "too-large");
+    return;
+  }
+
+  if (previous && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs) {
+    options.snapshot.set(relativePath, previous);
+    options.budget.usedBytes += previous.size;
+    return;
+  }
+
+  if (options.budget.usedBytes + stat.size > options.budget.maxBytes) {
+    addSkip(options.skippedDetails, relativePath, "snapshot-budget");
+    return;
+  }
+
+  const fileSnapshot = await snapshotFileForExternalTracking({
+    root: options.root,
+    path: relativePath,
+    config: options.config,
+    maxFileSizeMB: options.config.watch.maxFileSizeMB,
+    skipBinary: true,
+    dryRun: options.dryRun,
+  });
+
+  if (fileSnapshot) {
+    options.snapshot.set(relativePath, fileSnapshot);
+    options.budget.usedBytes += fileSnapshot.size;
+  }
+}
+
+function registerCasePath(
+  options: {
+    snapshot: WatchSnapshot;
+    skippedDetails: WatchSkipDetail[];
+    caseTracking: {
+      caseSensitive: boolean;
+      keys: Map<string, string>;
+      collisions: Set<string>;
+    };
+  },
+  relativePath: string
+): boolean {
+  if (options.caseTracking.caseSensitive) return true;
+
+  const key = relativePath.toLowerCase();
+  const existing = options.caseTracking.keys.get(key);
+  if (existing && existing !== relativePath) {
+    options.caseTracking.collisions.add(existing);
+    options.caseTracking.collisions.add(relativePath);
+    options.snapshot.delete(existing);
+    addSkip(options.skippedDetails, existing, "case-collision");
+    return false;
+  }
+
+  options.caseTracking.keys.set(key, relativePath);
+  return !options.caseTracking.collisions.has(relativePath);
+}
+
+function handleSkippableFsError(
+  skippedDetails: WatchSkipDetail[],
+  relativePath: string,
+  err: unknown
+): boolean {
+  if (isSkippableSafeFSError(err)) {
+    addSkip(skippedDetails, relativePath, (err as SafeFSError).code.toLowerCase());
+    return true;
+  }
+
+  const reason = mapFsErrorReason((err as NodeJS.ErrnoException).code);
+  if (reason) {
+    addSkip(skippedDetails, relativePath, reason);
+    return true;
+  }
+
+  return false;
+}
+
+function mapFsErrorReason(code: string | undefined): string | undefined {
+  switch (code) {
+    case "EPERM":
+    case "EACCES":
+      return "permission-denied";
+    case "EBUSY":
+      return "busy";
+    case "ENOENT":
+      return "missing-during-scan";
+    default:
+      return undefined;
+  }
+}
 async function shouldSkipPath(
   root: string,
   relativePath: string,

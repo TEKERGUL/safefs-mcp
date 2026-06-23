@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { loadConfig } from "../config/loadConfig.js";
 import { resolveSafePath } from "../core/pathSafety.js";
 import { SafeFSError, type SafeFSConfig } from "../types/index.js";
+import { getAutoGuardStatus } from "./autoGuard.js";
 
 const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = "@tekergul/safefs-mcp";
@@ -68,6 +69,7 @@ export async function runDoctor(
   checks.push(await checkSafefsStorage(root));
   checks.push(await checkMandatoryProtection(root, config));
   checks.push(await checkMcpConfig(root));
+  checks.push(await checkAutoGuard(root));
   const installModeCheck = await checkInstallMode(root);
   if (installModeCheck) checks.push(installModeCheck);
   checks.push(await checkPackageBinary(root));
@@ -177,6 +179,45 @@ async function checkMcpConfig(root: string): Promise<DoctorCheck> {
   };
 }
 
+async function checkAutoGuard(root: string): Promise<DoctorCheck> {
+  const status = await getAutoGuardStatus(root);
+  const installedClients = status.clients.filter((client) =>
+    client.wrappers.some((wrapper) => wrapper.exists && wrapper.managed)
+  );
+
+  if (installedClients.length === 0) {
+    return {
+      name: "auto-guard",
+      status: "warn",
+      message: "Project-local auto-guard is not installed. Run `safefs init --auto-guard` or `safefs auto-guard install`.",
+    };
+  }
+
+  const missingRealCommands = installedClients
+    .filter((client) => !client.realCommand)
+    .map((client) => client.client);
+  if (missingRealCommands.length > 0) {
+    return {
+      name: "auto-guard",
+      status: "warn",
+      message: `Auto-guard wrappers exist, but real client commands were not found outside .safefs/bin: ${missingRealCommands.join(", ")}.`,
+    };
+  }
+
+  if (!status.pathActive) {
+    return {
+      name: "auto-guard",
+      status: "warn",
+      message: "Auto-guard wrappers exist, but this shell PATH is not active. Run `Invoke-Expression (safefs auto-guard env powershell)` or `eval \"$(safefs auto-guard env bash)\"`.",
+    };
+  }
+
+  return {
+    name: "auto-guard",
+    status: "pass",
+    message: `Auto-guard active for: ${installedClients.map((client) => client.client).join(", ")}.`,
+  };
+}
 async function checkInstallMode(root: string): Promise<DoctorCheck | undefined> {
   const configs = await readMcpConfigs(root);
   if (configs.length === 0) return undefined;

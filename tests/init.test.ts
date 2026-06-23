@@ -100,6 +100,35 @@ describe("init", () => {
     expect(gemini).toContain("\"safefs\"");
   });
 
+  it("init --auto-guard creates wrappers and activation files", async () => {
+    const result = await runInit(tmpDir, {
+      yes: true,
+      clients: ["claude"],
+      autoGuard: true,
+    });
+
+    expect(result.autoGuard).toBeDefined();
+    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude"));
+    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude.cmd"));
+    await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.ps1"))).resolves.toBeTruthy();
+    await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.sh"))).resolves.toBeTruthy();
+  });
+
+  it("init --local auto-guard wrappers call the CLI entrypoint, not the MCP server", async () => {
+    const localCliPath = path.join(tmpDir, "dist", "cli.js");
+    await runInit(tmpDir, {
+      yes: true,
+      local: true,
+      localCliPath,
+      clients: ["claude"],
+      autoGuard: true,
+    });
+
+    const wrapper = await fs.readFile(path.join(tmpDir, ".safefs", "bin", "claude.cmd"), "utf-8");
+
+    expect(wrapper).toContain(`node "${localCliPath}" auto-guard run claude --`);
+    expect(wrapper).not.toContain("serve --root");
+  });
   it("init --local writes MCP configs that run the local CLI", async () => {
     const localCliPath = path.join(tmpDir, "dist", "cli.js");
     const result = await runInit(tmpDir, {

@@ -14,10 +14,20 @@ SafeFS is a lightweight session guard for AI coding agents. It records local bef
 
 ## Quick Start
 
+```powershell
+npm install -g @tekergul/safefs-mcp
+safefs init --yes --clients claude --auto-guard
+Invoke-Expression (safefs auto-guard env powershell)
+claude
+```
+
+Bash/zsh:
+
 ```bash
 npm install -g @tekergul/safefs-mcp
-safefs init
-safefs guard -- claude
+safefs init --yes --clients claude --auto-guard
+eval "$(safefs auto-guard env bash)"
+claude
 ```
 
 Preview and apply rollback:
@@ -30,7 +40,7 @@ safefs rollback 10m --yes
 
 ## Features
 
-- Works even when agents use their native edit tools
+- Works even when agents use their native edit tools through guard/watch or project-local auto-guard
 - Roll back AI changes from `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
 - Preview rollback as readable diffs before applying changes
 - Restore one file without resetting the whole project
@@ -45,6 +55,10 @@ safefs rollback 10m --yes
 safefs init
 safefs doctor
 safefs guard -- claude
+safefs auto-guard install --clients claude,codex
+safefs auto-guard status
+safefs auto-guard env powershell
+safefs auto-guard uninstall
 safefs watch
 safefs watch --dry-run
 safefs timeline --since 3h
@@ -62,16 +76,30 @@ safefs gc --yes
 Rollback defaults to dry-run. Use `--yes` only after reviewing the plan or diff.
 Maintenance commands also default to dry-run. `prune` removes old timeline events and `gc` removes unreferenced objects only when `--yes` is provided.
 
-## Guard And Watch Mode
+## Auto-Guard, Guard, And Watch Mode
 
-`guard` is the recommended mode for demos and everyday AI sessions:
+`auto-guard` is the easiest everyday setup. It installs project-local wrappers in `.safefs/bin` and does not modify global shell profiles or global binaries:
+
+```bash
+safefs init --yes --clients claude,codex --auto-guard
+safefs auto-guard status
+```
+
+Activate the current shell, then run your agent normally:
+
+```powershell
+Invoke-Expression (safefs auto-guard env powershell)
+claude
+```
+
+Manual `guard` remains available for explicit sessions:
 
 ```bash
 safefs guard -- claude
 safefs guard -- codex
 ```
 
-It starts SafeFS watch, runs the command, captures native file writes/deletes/moves, and flushes the final changes when the command exits.
+`guard` starts SafeFS watch, runs the command, captures native file writes/deletes/moves, and flushes the final changes when the command exits.
 
 Use `watch` when you want a separate terminal:
 
@@ -79,11 +107,11 @@ Use `watch` when you want a separate terminal:
 safefs watch
 ```
 
-Watch mode respects `.gitignore`, protected patterns, file-size limits, stable-write debounce, binary detection, and `.safefs/watch/manifest.json` reuse.
+Watch mode respects `.gitignore`, protected patterns, file-size limits, stable-write debounce, binary detection, case-collision safety, symlink policy, move detection, and `.safefs/watch/manifest.json` reuse.
 
 ## MCP Tools
 
-SafeFS still exposes MCP tools for recovery and inspection:
+SafeFS remains an MCP server. The watcher/auto-guard layer captures native edits; MCP tools provide recovery and inspection:
 
 - `safe_read_file`
 - `safe_diff`
@@ -114,7 +142,7 @@ If a file changed after the recorded edit, rollback skips it and reports the exp
 - Paths must stay inside the workspace root
 - `.git/`, `.safefs/`, `.env*`, keys, tokens, cloud credentials, secrets, and common build/vendor folders are protected by default
 - User config can add protected patterns and watch excludes
-- Symlink escapes are blocked by default
+- Symlinks are skipped by default; symlink escapes are blocked when following is enabled
 - Binary and large files are skipped by watch mode
 - Timeline events are append-only
 - Timeline pruning and object garbage collection are explicit, dry-run-first maintenance commands
@@ -126,7 +154,7 @@ See [SECURITY.md](SECURITY.md).
 The recommended setup command writes config snippets for selected clients:
 
 ```bash
-safefs init --yes --clients codex,cursor,claude,gemini
+safefs init --yes --clients codex,cursor,claude,gemini --auto-guard
 ```
 
 Manual examples live in [examples/](examples/).
@@ -209,11 +237,12 @@ npm pack --dry-run
 
 ## Release Checklist
 
-1. Confirm `pnpm lint`, `pnpm test`, `pnpm build`, and `npm pack --dry-run` pass locally.
-2. Run a guard smoke test in a clean project.
-3. Run `safefs doctor --online` after npm publish to verify package reachability.
-4. Push a tag only after GitHub Actions is green.
-5. Create a GitHub release that links to the npm package and includes the guard rollback demo.
+1. Confirm `pnpm audit`, `pnpm lint`, `pnpm test`, `pnpm build`, `npm pack --dry-run`, and `node dist/cli.js --help` pass locally.
+2. Run a clean-project smoke test: global install, `safefs init --yes --clients claude --auto-guard`, shell activation, wrapper launch, `safefs diff 10m`, and rollback dry-run.
+3. Push and wait for GitHub Actions to go green.
+4. Publish with `npm publish --access public`.
+5. Verify npm with `npm view @tekergul/safefs-mcp version` and `safefs doctor --online`.
+6. Create a GitHub release with 1.1 notes; demo GIF/logo polish can follow after the release.
 
 ## License
 

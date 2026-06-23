@@ -3,6 +3,8 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { DEFAULT_CONFIG_YAML } from "../config/defaultConfig.js";
+import { installAutoGuard } from "./autoGuard.js";
+import type { AutoGuardInstallResult } from "./autoGuard.js";
 
 export type InitClient = "codex" | "cursor" | "claude" | "gemini";
 export type InitInstallMode = "npm" | "local";
@@ -12,6 +14,7 @@ export interface InitOptions {
   clients?: InitClient[];
   local?: boolean;
   localCliPath?: string;
+  autoGuard?: boolean;
 }
 
 export interface InitResult {
@@ -20,6 +23,7 @@ export interface InitResult {
   skipped: string[];
   clients: InitClient[];
   installMode: InitInstallMode;
+  autoGuard?: AutoGuardInstallResult;
 }
 
 interface ClientFile {
@@ -64,12 +68,13 @@ export async function runInit(
   options: InitOptions = {}
 ): Promise<InitResult> {
   const installMode: InitInstallMode = options.local ? "local" : "npm";
-  const commandSpec = createCommandSpec(options);
+  const commandSpec = createMcpCommandSpec(options);
+  const clients = await selectClients(options);
   const result: InitResult = {
     created: [],
     updated: [],
     skipped: [],
-    clients: await selectClients(options),
+    clients,
     installMode,
   };
 
@@ -92,6 +97,19 @@ export async function runInit(
   for (const client of result.clients) {
     const target = createClientFile(client, commandSpec);
     await writeIfMissing(root, target.file, target.content, result, `${client} MCP config`);
+  }
+
+  if (await selectAutoGuard(options, result.clients)) {
+    result.autoGuard = await installAutoGuard(root, {
+      clients: result.clients,
+      commandSpec: createAutoGuardCommandSpec(options),
+    });
+    for (const file of result.autoGuard.created) {
+      console.log(`  CREATE ${file} (auto-guard)`);
+    }
+    for (const file of result.autoGuard.skipped) {
+      console.log(`  SKIP ${file} already exists; not overwritten (auto-guard)`);
+    }
   }
 
   printInitSummary(result);
@@ -123,6 +141,28 @@ async function selectClients(options: InitOptions): Promise<InitClient[]> {
   }
 }
 
+async function selectAutoGuard(options: InitOptions, clients: InitClient[]): Promise<boolean> {
+  if (options.autoGuard !== undefined) {
+    return options.autoGuard && clients.length > 0;
+  }
+
+  if (options.yes || clients.length === 0) {
+    return false;
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return false;
+  }
+
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await rl.question("Install project-local auto-guard wrappers? [Y/n] ");
+    return answer.trim().toLowerCase() !== "n";
+  } finally {
+    rl.close();
+  }
+}
+
 function parseClients(raw: string): InitClient[] {
   const allowed = new Set<InitClient>(["codex", "cursor", "claude", "gemini"]);
   return uniqueClients(
@@ -137,7 +177,7 @@ function uniqueClients(clients: InitClient[]): InitClient[] {
   return [...new Set(clients)];
 }
 
-function createCommandSpec(options: InitOptions): McpCommandSpec {
+function createMcpCommandSpec(options: InitOptions): McpCommandSpec {
   if (!options.local) {
     return {
       command: "npx",
@@ -148,6 +188,20 @@ function createCommandSpec(options: InitOptions): McpCommandSpec {
   return {
     command: "node",
     args: [path.resolve(options.localCliPath ?? path.join("dist", "cli.js")), "serve", "--root", "."],
+  };
+}
+
+function createAutoGuardCommandSpec(options: InitOptions): McpCommandSpec {
+  if (!options.local) {
+    return {
+      command: "safefs",
+      args: [],
+    };
+  }
+
+  return {
+    command: "node",
+    args: [path.resolve(options.localCliPath ?? path.join("dist", "cli.js"))],
   };
 }
 
@@ -277,9 +331,22 @@ function printInitSummary(result: InitResult): void {
     console.log("MCP configs: none selected");
   }
 
+  if (result.autoGuard) {
+    console.log(`Auto-guard: ${result.autoGuard.created.length} created | ${result.autoGuard.skipped.length} skipped`);
+  } else {
+    console.log("Auto-guard: not installed");
+  }
+
   console.log("");
   console.log("Next:");
   console.log("  safefs doctor");
+  if (result.autoGuard) {
+    if (process.platform === "win32") {
+      console.log("  Invoke-Expression (safefs auto-guard env powershell)");
+    } else {
+      console.log("  eval \"$(safefs auto-guard env bash)\"");
+    }
+  }
   console.log("  safefs guard -- claude");
   console.log("  safefs watch");
   console.log("  safefs timeline --since 1h");

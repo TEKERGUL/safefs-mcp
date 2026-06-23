@@ -85,6 +85,7 @@ export interface SafeFSConfig {
   watch: {
     intervalMs: number;
     debounceMs: number;
+    moveDetectionWindowMs: number;
     maxFileSizeMB: number;
     maxSnapshotBytesMB: number;
     respectGitignore: boolean;

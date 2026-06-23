@@ -74,11 +74,20 @@ export const DEFAULT_WATCH_EXCLUDE_PATTERNS = [
   ".cache/**",
   ".turbo/**",
   ".pnpm-store/**",
+  ".DS_Store",
   "*.log",
   "*.tmp",
   "*.temp",
   "*.swp",
   "*.swo",
+  "*.swx",
+  "*.part",
+  "*.crdownload",
+  "*.download",
+  "*.bak",
+  "*.orig",
+  ".#*",
+  "#*#",
   "~$*",
   ".safefs_tmp_*",
 ];
@@ -107,6 +116,7 @@ export const DEFAULT_CONFIG: SafeFSConfig = {
   watch: {
     intervalMs: 1000,
     debounceMs: 750,
+    moveDetectionWindowMs: 5000,
     maxFileSizeMB: 5,
     maxSnapshotBytesMB: 250,
     respectGitignore: true,
@@ -167,6 +177,7 @@ storage:
 watch:
   intervalMs: 1000
   debounceMs: 750
+  moveDetectionWindowMs: 5000
   maxFileSizeMB: 5
   maxSnapshotBytesMB: 250
   respectGitignore: true
@@ -177,8 +188,22 @@ watch:
     - ".next/**"
     - "coverage/**"
     - ".cache/**"
+    - ".turbo/**"
+    - ".pnpm-store/**"
+    - ".DS_Store"
     - "*.log"
     - "*.tmp"
     - "*.temp"
+    - "*.swp"
+    - "*.swo"
+    - "*.swx"
+    - "*.part"
+    - "*.crdownload"
+    - "*.download"
+    - "*.bak"
+    - "*.orig"
+    - ".#*"
+    - "#*#"
+    - "~$*"
     - ".safefs_tmp_*"
 `;

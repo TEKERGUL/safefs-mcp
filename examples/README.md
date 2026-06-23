@@ -4,16 +4,28 @@ This directory contains example configuration files for MCP clients.
 
 ## Auto Setup
 
+Recommended npm setup with project-local auto-guard:
+
 ```bash
-safefs init --yes --clients codex,cursor,claude,gemini
+safefs init --yes --clients codex,cursor,claude,gemini --auto-guard
 ```
 
-This creates config files for selected clients without overwriting existing files.
+This creates MCP config files, SafeFS guard wrappers, and activation files without overwriting existing files.
+
+Activate the current shell before opening your agent:
+
+```powershell
+Invoke-Expression (safefs auto-guard env powershell)
+```
+
+```bash
+eval "$(safefs auto-guard env bash)"
+```
 
 Before npm publish, use local checkout mode:
 
 ```bash
-node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini
+node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini --auto-guard
 ```
 
 ## Manual Setup
@@ -25,7 +37,9 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini
 
 ## Notes
 
+- SafeFS remains an MCP server for diff, timeline, rollback, and storage status.
+- Auto-guard/watch captures native file edits, so agents do not need to use legacy SafeFS write tools.
 - Gemini CLI tools are exposed with fully qualified names like `mcp_safefs_safe_diff`.
 - Run `safefs doctor --gemini-smoke` to verify Gemini CLI can see the SafeFS MCP config.
-- The `safefs.yml` file is an example `.safefs.yml` project config. Use `safefs guard -- <agent>` for normal native edits.
+- The `safefs.yml` file is an example `.safefs.yml` project config.
 - If installing from a local GitHub checkout, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.

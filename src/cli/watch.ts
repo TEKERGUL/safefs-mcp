@@ -84,6 +84,7 @@ export async function startWatch(
         pending,
         sessionId,
         stableMs: force ? 0 : undefined,
+        flush: force,
       });
       current = result.snapshot;
       pending = result.pending;

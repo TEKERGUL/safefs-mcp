@@ -36,6 +36,7 @@ export const SafeFSConfigSchema = z.object({
     .object({
       intervalMs: z.number().int().positive().max(60000).default(1000),
       debounceMs: z.number().int().nonnegative().max(60000).default(750),
+      moveDetectionWindowMs: z.number().int().nonnegative().max(60000).default(5000),
       maxFileSizeMB: z.number().positive().max(1024).default(5),
       maxSnapshotBytesMB: z.number().positive().max(1024 * 1024).default(250),
       respectGitignore: z.boolean().default(true),
