@@ -44,7 +44,8 @@ async function robustRename(source: string, target: string): Promise<void> {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if ((code === "EPERM" || code === "EACCES") && attempt < MAX_RETRIES) {
-        await new Promise((r) => setTimeout(r, DELAYS[attempt]!));
+        const delay = DELAYS[attempt] ?? DELAYS.at(-1) ?? 100;
+        await new Promise((r) => setTimeout(r, delay));
         continue;
       }
       throw err;

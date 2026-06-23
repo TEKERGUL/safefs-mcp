@@ -39,7 +39,11 @@ export class Mutex {
 
   private release() {
     if (this.queue.length > 0) {
-      const next = this.queue.shift()!;
+      const next = this.queue.shift();
+      if (!next) {
+        this.locked = false;
+        return;
+      }
       next.grant();
     } else {
       this.locked = false;
@@ -57,10 +61,11 @@ export class PathMutexes {
   private mutexes = new Map<string, Mutex>();
 
   async acquire(path: string, timeoutMs?: number): Promise<() => void> {
-    if (!this.mutexes.has(path)) {
-      this.mutexes.set(path, new Mutex());
+    let mutex = this.mutexes.get(path);
+    if (!mutex) {
+      mutex = new Mutex();
+      this.mutexes.set(path, mutex);
     }
-    const mutex = this.mutexes.get(path)!;
     const release = await mutex.acquire(timeoutMs ?? DEFAULT_PATH_MUTEX_TIMEOUT_MS);
 
     return () => {

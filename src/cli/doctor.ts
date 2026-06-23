@@ -195,7 +195,7 @@ async function checkAutoGuard(root: string): Promise<DoctorCheck> {
     return {
       name: "auto-guard",
       status: "warn",
-      message: "Project-local auto-guard is not installed. Run `safefs init --auto-guard` or `safefs auto-guard install`.",
+      message: "Project-local auto-guard is not installed. Run `safefs init --yes --clients claude --auto-guard` or `safefs auto-guard install --clients claude,codex`.",
     };
   }
 
@@ -206,7 +206,7 @@ async function checkAutoGuard(root: string): Promise<DoctorCheck> {
     return {
       name: "auto-guard",
       status: "warn",
-      message: `Auto-guard wrappers exist, but real client commands were not found outside .safefs/bin: ${missingRealCommands.join(", ")}.`,
+      message: `Auto-guard wrappers exist, but these real client commands were not found outside .safefs/bin: ${missingRealCommands.join(", ")}. Install the client CLI or remove it from auto-guard.`,
     };
   }
 
@@ -214,7 +214,7 @@ async function checkAutoGuard(root: string): Promise<DoctorCheck> {
     return {
       name: "auto-guard",
       status: "warn",
-      message: "Auto-guard wrappers exist, but this shell PATH is not active. Run `Invoke-Expression (safefs auto-guard env powershell)` or `eval \"$(safefs auto-guard env bash)\"`.",
+      message: "Auto-guard wrappers exist, but this shell PATH is not active. PowerShell: `Invoke-Expression (safefs auto-guard env powershell)`. Bash/zsh: `eval \"$(safefs auto-guard env bash)\"`.",
     };
   }
 

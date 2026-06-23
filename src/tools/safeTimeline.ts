@@ -58,9 +58,8 @@ export async function safeTimeline(options: {
     operations,
     riskBreakdown,
     storageUsedBytes: stats.totalObjectSizeBytes,
-    oldestEvent: events.length > 0 ? events[0]!.timestamp : undefined,
-    newestEvent:
-      events.length > 0 ? events[events.length - 1]!.timestamp : undefined,
+    oldestEvent: events[0]?.timestamp,
+    newestEvent: events.at(-1)?.timestamp,
   };
 
   return {

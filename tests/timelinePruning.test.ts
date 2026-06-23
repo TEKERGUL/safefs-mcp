@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { pruneTimeline } from "../src/core/timelinePruning.js";
 import { appendEvent, generateEventId, queryEvents } from "../src/core/timeline.js";
 import type { TimelineEvent } from "../src/types/index.js";
+import { expectDefined } from "./helpers.js";
 
 function makeEvent(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
   return {
@@ -91,7 +92,7 @@ describe("timelinePruning", () => {
 
     const events = await queryEvents(tmpDir, {});
     expect(events).toHaveLength(2);
-    expect(events[0]!.path).toBe("first.txt");
-    expect(events[1]!.path).toBe("second.txt");
+    expect(expectDefined(events[0]).path).toBe("first.txt");
+    expect(expectDefined(events[1]).path).toBe("second.txt");
   });
 });

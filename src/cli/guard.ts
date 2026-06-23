@@ -9,8 +9,15 @@ export async function runGuard(root: string, commandArgs: string[]): Promise<num
     return 1;
   }
 
+  const command = commandArgs[0];
+  if (!command) {
+    console.error("Error: guard requires a command after --.");
+    console.error("Example: safefs guard -- claude");
+    return 1;
+  }
+
   const watch = await startWatch(root);
-  const [command, ...args] = commandArgs;
+  const args = commandArgs.slice(1);
 
   return await new Promise<number>((resolve) => {
     let child: ChildProcess | undefined;
@@ -24,7 +31,7 @@ export async function runGuard(root: string, commandArgs: string[]): Promise<num
     };
 
     const handleStartError = (err: Error, attemptedCommand: string): void => {
-      if (shouldRetryWithCmd(command!, attemptedCommand, err)) {
+      if (shouldRetryWithCmd(command, attemptedCommand, err)) {
         start(`${command}.cmd`);
         return;
       }
@@ -61,7 +68,7 @@ export async function runGuard(root: string, commandArgs: string[]): Promise<num
     }
 
     process.once("SIGINT", onSigint);
-    start(command!);
+    start(command);
   });
 }
 

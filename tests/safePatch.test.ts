@@ -7,6 +7,7 @@ import { queryEvents } from "../src/core/timeline.js";
 import { loadObject } from "../src/core/objectStore.js";
 import { DEFAULT_CONFIG } from "../src/config/defaultConfig.js";
 import type { SafeFSConfig } from "../src/types/index.js";
+import { expectDefined, expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 let config: SafeFSConfig;
@@ -99,10 +100,10 @@ describe("safePatch", () => {
     });
 
     const events = await queryEvents(tmpDir, {});
-    const event = events[0]!;
+    const event = expectFirst(events);
     expect(event.beforeObject).toBeTruthy();
 
-    const restored = await loadObject(tmpDir, event.beforeObject!);
+    const restored = await loadObject(tmpDir, expectDefined(event.beforeObject));
     expect(restored.toString("utf-8")).toBe(original);
   });
 
@@ -118,12 +119,13 @@ describe("safePatch", () => {
     });
 
     const events = await queryEvents(tmpDir, {});
-    const event = events[0]!;
+    const event = expectFirst(events);
+    const patch = expectDefined(event.patch);
     expect(event.patch).toBeDefined();
-    expect(event.patch!.search).toBe("c");
-    expect(event.patch!.replace).toBe("C");
-    expect(event.patch!.beforeBlockObject).toBeTruthy();
-    expect(event.patch!.afterBlockObject).toBeTruthy();
+    expect(patch.search).toBe("c");
+    expect(patch.replace).toBe("C");
+    expect(patch.beforeBlockObject).toBeTruthy();
+    expect(patch.afterBlockObject).toBeTruthy();
   });
 
   it("timeline event includes lineStart and lineEnd", async () => {
@@ -138,9 +140,10 @@ describe("safePatch", () => {
     });
 
     const events = await queryEvents(tmpDir, {});
-    const event = events[0]!;
-    expect(event.patch!.lineStart).toBe(3);
-    expect(event.patch!.lineEnd).toBe(3);
+    const event = expectFirst(events);
+    const patch = expectDefined(event.patch);
+    expect(patch.lineStart).toBe(3);
+    expect(patch.lineEnd).toBe(3);
   });
 
   it("file not found returns error", async () => {

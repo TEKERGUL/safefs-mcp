@@ -116,13 +116,14 @@ export async function rollbackSince(options: {
 
   if (!effectiveDryRun && reverted.length > 0) {
     rollbackEventId = generateEventId();
+    const onlyRevertedPath = reverted.length === 1 ? reverted[0] : undefined;
     const rollbackEvent: TimelineEvent = {
       eventId: rollbackEventId,
       timestamp: new Date().toISOString(),
       actor: "user",
       tool: "safe_rollback_time",
       operation: "rollback",
-      path: reverted.length === 1 ? reverted[0]! : "*",
+      path: onlyRevertedPath ?? "*",
       risk: "medium",
       committed: true,
       status: "committed",
@@ -194,8 +195,13 @@ export async function planRollbackSince(options: {
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-    const earliestEvent = sorted[0]!;
-    const latestEvent = sorted[sorted.length - 1]!;
+    const earliestEvent = sorted[0];
+    const latestEvent = sorted.at(-1);
+    if (!earliestEvent || !latestEvent) {
+      skipped.push(filePath);
+      continue;
+    }
+
     const conflict = await detectConflict(resolved.absolutePath, latestEvent);
 
     if (conflict) {

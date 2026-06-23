@@ -55,6 +55,8 @@ eval "$(safefs auto-guard env bash)"
 claude
 ```
 
+After activation, run your agent normally. The project-local wrapper starts SafeFS guard in the background.
+
 Preview and apply recovery:
 
 ```bash
@@ -88,7 +90,6 @@ SafeFS restores the pre-change state for the affected files while leaving unrela
 - Works when agents use native edit tools through guard/watch or project-local auto-guard
 - Roll back AI changes from `10m`, `15m`, `1h`, `3h`, `1d`, `7d`, or an ISO timestamp
 - Preview rollback as readable unified diffs before applying changes
-- Restore one damaged file from its latest checkpoint without touching other files
 - Restore one file without resetting the whole project
 - Skip conflicts when files changed after the recorded edit
 - Ignore protected paths, secrets, vendor folders, build output, binary files, and large files by default
@@ -153,6 +154,8 @@ Activate the current shell, then run your agent normally:
 Invoke-Expression (safefs auto-guard env powershell)
 claude
 ```
+
+If `safefs doctor` says PATH is not active, run the activation command again in the same terminal where you will launch the agent.
 
 Manual `guard` remains available for explicit sessions:
 

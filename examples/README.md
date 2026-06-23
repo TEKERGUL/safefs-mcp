@@ -16,11 +16,15 @@ Activate the current shell before opening your agent:
 
 ```powershell
 Invoke-Expression (safefs auto-guard env powershell)
+claude
 ```
 
 ```bash
 eval "$(safefs auto-guard env bash)"
+claude
 ```
+
+Use the normal client command after activation. SafeFS records native edits in the background.
 
 When developing from a local checkout, use local mode:
 

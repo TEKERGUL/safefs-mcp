@@ -3,12 +3,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { safeWrite } from "../src/tools/safeWrite.js";
-import { safePatch } from "../src/tools/safePatch.js";
 import { safeDelete } from "../src/tools/safeDelete.js";
 import { rollbackSince } from "../src/core/rollback.js";
 import { appendEvent, generateEventId, queryEvents } from "../src/core/timeline.js";
 import { DEFAULT_CONFIG } from "../src/config/defaultConfig.js";
 import type { SafeFSConfig } from "../src/types/index.js";
+import { expectDefined, expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 let config: SafeFSConfig;
@@ -158,7 +158,7 @@ describe("rollback", () => {
     });
 
     expect(result.conflicts.length).toBe(1);
-    expect(result.conflicts[0]!.path).toBe("conflict.txt");
+    expect(expectFirst(result.conflicts).path).toBe("conflict.txt");
     expect(result.reverted).not.toContain("conflict.txt");
   });
 
@@ -195,8 +195,8 @@ describe("rollback", () => {
 
     const events = await queryEvents(tmpDir, {});
     const rollbackEvent = events.find((e) => e.operation === "rollback");
-    expect(rollbackEvent).toBeDefined();
-    expect(rollbackEvent!.rollbackOf!.length).toBeGreaterThan(0);
+    const rollbackOf = expectDefined(expectDefined(rollbackEvent).rollbackOf);
+    expect(rollbackOf.length).toBeGreaterThan(0);
   });
 
   it("latest/earliest event logic works for multiple edits to same file", async () => {

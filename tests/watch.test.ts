@@ -10,6 +10,7 @@ import { detectWorkspaceChanges, scanWorkspaceForWatch } from "../src/core/watch
 import { safeDelete } from "../src/tools/safeDelete.js";
 import { safePatch } from "../src/tools/safePatch.js";
 import { safeWrite } from "../src/tools/safeWrite.js";
+import { expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 
@@ -47,8 +48,9 @@ describe("watch", () => {
     });
 
     expect(cycle.events).toHaveLength(1);
-    expect(cycle.events[0]!.path).toBe("index.html");
-    expect(cycle.events[0]!.operation).toBe("write");
+    const event = expectFirst(cycle.events);
+    expect(event.path).toBe("index.html");
+    expect(event.operation).toBe("write");
 
     await rollbackSince({
       root: tmpDir,
@@ -80,7 +82,7 @@ describe("watch", () => {
     });
 
     expect(cycle.events).toHaveLength(1);
-    expect(cycle.events[0]!.operation).toBe("delete");
+    expect(expectFirst(cycle.events).operation).toBe("delete");
 
     await rollbackSince({
       root: tmpDir,
@@ -249,7 +251,7 @@ describe("watch", () => {
 
     expect(watched.events).toHaveLength(0);
     expect(events).toHaveLength(1);
-    expect(events[0]!.tool).toBe("safe_write");
+    expect(expectFirst(events).tool).toBe("safe_write");
   });
 
   it("suppresses watcher duplicate events caused by legacy safePatch", async () => {
@@ -274,7 +276,7 @@ describe("watch", () => {
 
     expect(watched.events).toHaveLength(0);
     expect(events).toHaveLength(1);
-    expect(events[0]!.tool).toBe("safe_patch");
+    expect(expectFirst(events).tool).toBe("safe_patch");
   });
 
   it("suppresses watcher duplicate events caused by legacy safeDelete", async () => {
@@ -297,7 +299,7 @@ describe("watch", () => {
 
     expect(watched.events).toHaveLength(0);
     expect(events).toHaveLength(1);
-    expect(events[0]!.tool).toBe("safe_delete");
+    expect(expectFirst(events).tool).toBe("safe_delete");
   });
 
   it("detects same-hash move and rollback moves the file back", async () => {
@@ -315,7 +317,7 @@ describe("watch", () => {
     });
 
     expect(moved.events).toHaveLength(1);
-    expect(moved.events[0]!.operation).toBe("move");
+    expect(expectFirst(moved.events).operation).toBe("move");
 
     await rollbackSince({
       root: tmpDir,
@@ -392,7 +394,7 @@ describe("watch", () => {
     });
 
     expect(moved.events).toHaveLength(1);
-    expect(moved.events[0]!.operation).toBe("move");
+    expect(expectFirst(moved.events).operation).toBe("move");
   });
 
   it("records deferred deletes after the move detection window expires", async () => {
@@ -422,7 +424,7 @@ describe("watch", () => {
     });
 
     expect(expired.events).toHaveLength(1);
-    expect(expired.events[0]!.operation).toBe("delete");
+    expect(expectFirst(expired.events).operation).toBe("delete");
   });
 
   it("skips symlinks by default", async () => {

@@ -62,7 +62,7 @@ export async function pruneTimeline(
     }
 
     const newContent = retained.length > 0
-      ? retained.join("\n") + "\n"
+      ? `${retained.join("\n")}\n`
       : "";
 
     if (!dryRun) {

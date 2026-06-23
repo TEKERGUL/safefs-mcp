@@ -118,13 +118,19 @@ function diffLines(
   const rows = oldLines.length + 1;
   const cols = newLines.length + 1;
   const table = Array.from({ length: rows }, () => Array<number>(cols).fill(0));
+  const getCell = (row: number, col: number): number => table[row]?.[col] ?? 0;
 
   for (let i = oldLines.length - 1; i >= 0; i--) {
+    const row = table[i];
+    if (!row) {
+      throw new Error(`Diff table row ${i} was not initialized.`);
+    }
+
     for (let j = newLines.length - 1; j >= 0; j--) {
-      table[i]![j] =
+      row[j] =
         oldLines[i] === newLines[j]
-          ? table[i + 1]![j + 1]! + 1
-          : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
+          ? getCell(i + 1, j + 1) + 1
+          : Math.max(getCell(i + 1, j), getCell(i, j + 1));
     }
   }
 
@@ -137,7 +143,7 @@ function diffLines(
       result.push(` ${oldLines[i]}`);
       i++;
       j++;
-    } else if (table[i + 1]![j]! >= table[i]![j + 1]!) {
+    } else if (getCell(i + 1, j) >= getCell(i, j + 1)) {
       result.push(`-${oldLines[i]}`);
       i++;
     } else {
@@ -165,9 +171,9 @@ function diffLines(
     }
   }
   if (oldData.noTrailing && lastOldLineIdx !== -1 && (result[lastOldLineIdx] as string).startsWith("-")) {
-     result.splice(lastOldLineIdx + 1, 0, "\\ No newline at end of file");
+    result.splice(lastOldLineIdx + 1, 0, "\\ No newline at end of file");
   }
-  
+
   let lastNewLineIdx = -1;
   for (let k = result.length - 1; k >= 0; k--) {
     const l = result[k] as string;
@@ -177,12 +183,12 @@ function diffLines(
     }
   }
   if (newData.noTrailing && lastNewLineIdx !== -1 && (result[lastNewLineIdx] as string).startsWith("+")) {
-     result.splice(lastNewLineIdx + 1, 0, "\\ No newline at end of file");
+    result.splice(lastNewLineIdx + 1, 0, "\\ No newline at end of file");
   }
 
   return result;
 }
 
 function isBinary(buffer: Buffer | null): boolean {
-  return buffer !== null && buffer.includes(0);
+  return buffer?.includes(0) ?? false;
 }

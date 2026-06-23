@@ -9,6 +9,7 @@ import {
   installAutoGuard,
   uninstallAutoGuard,
 } from "../src/cli/autoGuard.js";
+import { expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 let originalPath: string | undefined;
@@ -96,8 +97,9 @@ describe("auto-guard", () => {
     const status = await getAutoGuardStatus(tmpDir, ["claude"]);
 
     expect(status.pathActive).toBe(true);
-    expect(status.clients[0]!.realCommand).toBe(realCommand);
-    expect(status.clients[0]!.wrappers.every((wrapper) => wrapper.exists)).toBe(true);
+    const clientStatus = expectFirst(status.clients);
+    expect(clientStatus.realCommand).toBe(realCommand);
+    expect(clientStatus.wrappers.every((wrapper) => wrapper.exists)).toBe(true);
   });
 
   it("uninstalls only managed files", async () => {

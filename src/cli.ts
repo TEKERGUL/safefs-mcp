@@ -163,9 +163,11 @@ Rollback options:
   --dry-run         Preview without applying (default)
 
 Examples:
-  safefs init --yes --clients codex,cursor,claude,gemini,antigravity
+  safefs init --yes --clients claude --auto-guard
+  safefs init --yes --clients codex,cursor,claude,gemini,antigravity --auto-guard
   node dist/cli.js init --local --yes --clients gemini
   safefs mcp-config antigravity
+  safefs doctor --antigravity
   safefs timeline --since 3h
   safefs diff 1h
   safefs checkup

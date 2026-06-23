@@ -60,7 +60,7 @@ async function getOrCreateWatchMatchers(root: string, config: SafeFSConfig): Pro
     } catch { /* no gitignore */ }
   }
 
-  const key = JSON.stringify(patterns) + "\0" + gitignoreContent;
+  const key = `${JSON.stringify(patterns)}\0${gitignoreContent}`;
   if (cachedMatcherKey === key && cachedMatchers) {
     return cachedMatchers;
   }

@@ -21,7 +21,7 @@ describe("objectGC", () => {
   });
 
   it("removes unreferenced objects", async () => {
-    const hash = await saveObject(tmpDir, "orphan content");
+    await saveObject(tmpDir, "orphan content");
     const result = await collectGarbage(tmpDir, { graceMs: 0 });
     expect(result.deleted).toBe(1);
     expect(result.freedBytes).toBeGreaterThan(0);
@@ -60,7 +60,7 @@ describe("objectGC", () => {
 
   it("handles mixed referenced and unreferenced", async () => {
     const refHash = await saveObject(tmpDir, "referenced");
-    const orphanHash = await saveObject(tmpDir, "orphan");
+    await saveObject(tmpDir, "orphan");
 
     const event: TimelineEvent = {
       eventId: generateEventId(),

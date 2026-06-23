@@ -51,7 +51,14 @@ export async function safeRestoreFile(options: {
     return restoreMovedFile({ ...options, path: resolved.relativePath, checkpoint });
   }
 
-  const latestEvent = events[events.length - 1]!;
+  const latestEvent = events.at(-1);
+  if (!latestEvent) {
+    throw new SafeFSError(
+      "NO_RESTORE_CHECKPOINT",
+      `No committed SafeFS checkpoint found for ${resolved.relativePath}.`
+    );
+  }
+
   const conflict = await detectRestoreConflict({
     absolutePath: resolved.absolutePath,
     path: resolved.relativePath,

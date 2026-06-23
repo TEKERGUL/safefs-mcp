@@ -7,6 +7,7 @@ import { queryEvents } from "../src/core/timeline.js";
 import { loadObject } from "../src/core/objectStore.js";
 import { DEFAULT_CONFIG } from "../src/config/defaultConfig.js";
 import type { SafeFSConfig } from "../src/types/index.js";
+import { expectDefined, expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 let config: SafeFSConfig;
@@ -57,10 +58,10 @@ describe("safeWrite", () => {
     expect(result.risk).toBe("medium");
 
     const events = await queryEvents(tmpDir, {});
-    const event = events[0]!;
+    const event = expectFirst(events);
     expect(event.beforeObject).toBeTruthy();
 
-    const restored = await loadObject(tmpDir, event.beforeObject!);
+    const restored = await loadObject(tmpDir, expectDefined(event.beforeObject));
     expect(restored.toString("utf-8")).toBe("original content");
   });
 
@@ -75,10 +76,11 @@ describe("safeWrite", () => {
 
     const events = await queryEvents(tmpDir, {});
     expect(events.length).toBe(1);
-    expect(events[0]!.operation).toBe("write");
-    expect(events[0]!.path).toBe("tracked.txt");
-    expect(events[0]!.reason).toBe("test write");
-    expect(events[0]!.committed).toBe(true);
+    const event = expectFirst(events);
+    expect(event.operation).toBe("write");
+    expect(event.path).toBe("tracked.txt");
+    expect(event.reason).toBe("test write");
+    expect(event.committed).toBe(true);
   });
 
   it("protected file write is blocked", async () => {

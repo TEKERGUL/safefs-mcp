@@ -7,6 +7,7 @@ import { safeDelete } from "../src/tools/safeDelete.js";
 import { safeWrite } from "../src/tools/safeWrite.js";
 import { DEFAULT_CONFIG } from "../src/config/defaultConfig.js";
 import type { SafeFSConfig } from "../src/types/index.js";
+import { expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 let config: SafeFSConfig;
@@ -35,9 +36,10 @@ describe("safeDiff", () => {
     const result = await safeDiff({ root: tmpDir, since: "1h", config });
 
     expect(result.diffs.length).toBe(1);
-    expect(result.diffs[0]!.action).toBe("restore");
-    expect(result.diffs[0]!.diff).toContain("-modified");
-    expect(result.diffs[0]!.diff).toContain("+original");
+    const diff = expectFirst(result.diffs);
+    expect(diff.action).toBe("restore");
+    expect(diff.diff).toContain("-modified");
+    expect(diff.diff).toContain("+original");
   });
 
   it("diff previews deleting an agent-created file", async () => {
@@ -51,9 +53,10 @@ describe("safeDiff", () => {
     const result = await safeDiff({ root: tmpDir, since: "1h", config });
 
     expect(result.diffs.length).toBe(1);
-    expect(result.diffs[0]!.action).toBe("delete_created");
-    expect(result.diffs[0]!.diff).toContain("+++ /dev/null");
-    expect(result.diffs[0]!.diff).toContain("-created");
+    const diff = expectFirst(result.diffs);
+    expect(diff.action).toBe("delete_created");
+    expect(diff.diff).toContain("+++ /dev/null");
+    expect(diff.diff).toContain("-created");
   });
 
   it("diff previews restoring a deleted file", async () => {
@@ -67,9 +70,10 @@ describe("safeDiff", () => {
     const result = await safeDiff({ root: tmpDir, since: "1h", config });
 
     expect(result.diffs.length).toBe(1);
-    expect(result.diffs[0]!.action).toBe("restore");
-    expect(result.diffs[0]!.diff).toContain("--- /dev/null");
-    expect(result.diffs[0]!.diff).toContain("+was here");
+    const diff = expectFirst(result.diffs);
+    expect(diff.action).toBe("restore");
+    expect(diff.diff).toContain("--- /dev/null");
+    expect(diff.diff).toContain("+was here");
   });
 
   it("diff reports conflicts and skips conflicted files", async () => {
@@ -86,6 +90,6 @@ describe("safeDiff", () => {
 
     expect(result.diffs).toHaveLength(0);
     expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0]!.path).toBe("conflict.txt");
+    expect(expectFirst(result.conflicts).path).toBe("conflict.txt");
   });
 });

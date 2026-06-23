@@ -361,19 +361,20 @@ function printInitSummary(result: InitResult): void {
   console.log("  safefs checkup");
   const antigravitySelected = result.clients.includes("antigravity");
   if (result.autoGuard) {
+    const firstAutoGuardClient = result.autoGuard.clients[0] ?? "<your-agent-command>";
     if (process.platform === "win32") {
       console.log("  Invoke-Expression (safefs auto-guard env powershell)");
     } else {
       console.log("  eval \"$(safefs auto-guard env bash)\"");
     }
+    console.log(`  ${firstAutoGuardClient}`);
+  } else if (!antigravitySelected) {
+    console.log("  safefs guard -- claude");
   }
   if (antigravitySelected) {
     console.log("  safefs mcp-config antigravity");
     console.log("  safefs watch");
   }
-  console.log("  safefs guard -- claude");
-  if (!antigravitySelected) {
-    console.log("  safefs watch");
-  }
-  console.log("  safefs timeline --since 1h");
+  console.log("  safefs diff 10m");
+  console.log("  safefs rollback 10m");
 }

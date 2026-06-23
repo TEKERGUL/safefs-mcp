@@ -3,6 +3,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 .safefs/
+.claude/
+demo/
 coverage/
 .DS_Store
 *.log

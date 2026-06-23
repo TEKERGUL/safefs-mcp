@@ -7,14 +7,21 @@ export function parseTimeInput(input: string): Date {
 
   const relMatch = trimmed.match(RELATIVE_PATTERN);
   if (relMatch) {
-    const value = parseInt(relMatch[1]!, 10);
+    const [, rawValue, unit] = relMatch;
+    if (!rawValue || !unit) {
+      throw new SafeFSError(
+        "INVALID_TIME_FORMAT",
+        `Invalid time format: "${input}". Use 15m, 1h, 3h, 1d, 7d, or an ISO timestamp.`
+      );
+    }
+
+    const value = parseInt(rawValue, 10);
     if (value <= 0) {
       throw new SafeFSError(
         "INVALID_TIME_FORMAT",
         "Relative time value must be positive."
       );
     }
-    const unit = relMatch[2]!;
 
     const now = new Date();
     let ms = 0;

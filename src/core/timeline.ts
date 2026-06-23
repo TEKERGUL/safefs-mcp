@@ -25,7 +25,7 @@ export async function appendEvent(
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
 
-  const line = JSON.stringify(event) + "\n";
+  const line = `${JSON.stringify(event)}\n`;
   const release = await timelineMutex.acquire();
   try {
     await fs.appendFile(filePath, line, "utf-8");
@@ -162,7 +162,9 @@ export async function queryRecentEvents(
       carry = position > 0 ? lines.shift() ?? "" : "";
 
       for (let index = lines.length - 1; index >= 0; index--) {
-        const trimmed = lines[index]!.trim();
+        const line = lines[index];
+        if (line === undefined) continue;
+        const trimmed = line.trim();
         if (!trimmed) continue;
 
         try {
@@ -173,9 +175,7 @@ export async function queryRecentEvents(
           }
           if (filter.path && event.path !== filter.path) continue;
           results.push(event);
-        } catch {
-          continue;
-        }
+        } catch {}
       }
     }
 

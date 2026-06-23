@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { appendEvent, queryEvents, queryRecentEvents, generateEventId } from "../src/core/timeline.js";
 import type { TimelineEvent } from "../src/types/index.js";
+import { expectFirst } from "./helpers.js";
 
 let tmpDir: string;
 
@@ -39,7 +40,7 @@ describe("timeline", () => {
 
     const events = await queryEvents(tmpDir, {});
     expect(events.length).toBe(1);
-    expect(events[0]!.eventId).toBe(event.eventId);
+    expect(expectFirst(events).eventId).toBe(event.eventId);
   });
 
   it("since filter works", async () => {
@@ -57,7 +58,7 @@ describe("timeline", () => {
       since: new Date(Date.now() - 3600000),
     });
     expect(events.length).toBe(1);
-    expect(events[0]!.eventId).toBe(newEvent.eventId);
+    expect(expectFirst(events).eventId).toBe(newEvent.eventId);
   });
 
   it("until filter works", async () => {
@@ -75,7 +76,7 @@ describe("timeline", () => {
       until: new Date(Date.now() - 3600000),
     });
     expect(events.length).toBe(1);
-    expect(events[0]!.eventId).toBe(oldEvent.eventId);
+    expect(expectFirst(events).eventId).toBe(oldEvent.eventId);
   });
 
   it("path filter works", async () => {
@@ -84,7 +85,7 @@ describe("timeline", () => {
 
     const events = await queryEvents(tmpDir, { path: "a.txt" });
     expect(events.length).toBe(1);
-    expect(events[0]!.path).toBe("a.txt");
+    expect(expectFirst(events).path).toBe("a.txt");
   });
 
   it("limit works", async () => {
@@ -100,11 +101,11 @@ describe("timeline", () => {
     const filePath = path.join(tmpDir, ".safefs", "timeline", "events.jsonl");
     const validEvent = makeEvent();
     await fs.appendFile(filePath, "not valid json\n", "utf-8");
-    await fs.appendFile(filePath, JSON.stringify(validEvent) + "\n", "utf-8");
+    await fs.appendFile(filePath, `${JSON.stringify(validEvent)}\n`, "utf-8");
 
     const events = await queryEvents(tmpDir, {});
     expect(events.length).toBe(1);
-    expect(events[0]!.eventId).toBe(validEvent.eventId);
+    expect(expectFirst(events).eventId).toBe(validEvent.eventId);
   });
 
   it("query coalesces pending and committed events by eventId", async () => {
@@ -130,9 +131,10 @@ describe("timeline", () => {
 
     const events = await queryEvents(tmpDir, {});
     expect(events.length).toBe(1);
-    expect(events[0]!.eventId).toBe(eventId);
-    expect(events[0]!.status).toBe("committed");
-    expect(events[0]!.afterHash).toBe("committed-hash");
+    const event = expectFirst(events);
+    expect(event.eventId).toBe(eventId);
+    expect(event.status).toBe("committed");
+    expect(event.afterHash).toBe("committed-hash");
   });
 
   it("query returns failed as the latest event status", async () => {
@@ -157,8 +159,9 @@ describe("timeline", () => {
 
     const events = await queryEvents(tmpDir, {});
     expect(events.length).toBe(1);
-    expect(events[0]!.status).toBe("failed");
-    expect(events[0]!.error).toBe("write failed");
+    const event = expectFirst(events);
+    expect(event.status).toBe("failed");
+    expect(event.error).toBe("write failed");
   });
 
   it("returns empty array if timeline file does not exist", async () => {

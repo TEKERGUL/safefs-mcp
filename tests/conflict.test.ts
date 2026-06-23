@@ -5,6 +5,7 @@ import os from "node:os";
 import { detectConflict } from "../src/core/conflict.js";
 import { sha256Buffer } from "../src/core/hash.js";
 import type { TimelineEvent } from "../src/types/index.js";
+import { expectDefined } from "./helpers.js";
 
 let tmpDir: string;
 
@@ -54,8 +55,7 @@ describe("conflict detection", () => {
       filePath,
       makeEvent({ afterHash: "expected_hash_different", path: "changed.txt" })
     );
-    expect(result).not.toBeNull();
-    expect(result!.reason).toContain("modified after");
+    expect(expectDefined(result).reason).toContain("modified after");
   });
 
   it("no conflict when deleted file stays deleted", async () => {
@@ -76,7 +76,6 @@ describe("conflict detection", () => {
       filePath,
       makeEvent({ operation: "delete", afterHash: null, path: "back.txt" })
     );
-    expect(result).not.toBeNull();
-    expect(result!.reason).toContain("recreated");
+    expect(expectDefined(result).reason).toContain("recreated");
   });
 });

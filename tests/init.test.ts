@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { runInit } from "../src/cli/init.js";
+import { expectDefined } from "./helpers.js";
 
 let tmpDir: string;
 
@@ -58,7 +59,7 @@ describe("init", () => {
 
     const gitignore = await fs.readFile(path.join(tmpDir, ".gitignore"), "utf-8");
     const matches = gitignore.match(/\.safefs\//g);
-    expect(matches!.length).toBe(1);
+    expect(matches ?? []).toHaveLength(1);
   });
 
   it("init creates AGENTS.md", async () => {
@@ -123,8 +124,9 @@ describe("init", () => {
     });
 
     expect(result.autoGuard).toBeDefined();
-    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude"));
-    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude.cmd"));
+    const autoGuard = expectDefined(result.autoGuard);
+    expect(autoGuard.created).toContain(path.join(".safefs", "bin", "claude"));
+    expect(autoGuard.created).toContain(path.join(".safefs", "bin", "claude.cmd"));
     await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.ps1"))).resolves.toBeTruthy();
     await expect(fs.stat(path.join(tmpDir, ".safefs", "activate.sh"))).resolves.toBeTruthy();
   });
@@ -137,9 +139,10 @@ describe("init", () => {
     });
 
     expect(result.autoGuard).toBeDefined();
-    expect(result.autoGuard!.clients).toEqual(["claude"]);
-    expect(result.autoGuard!.created).toContain(path.join(".safefs", "bin", "claude"));
-    expect(result.autoGuard!.created).not.toContain(path.join(".safefs", "bin", "antigravity"));
+    const autoGuard = expectDefined(result.autoGuard);
+    expect(autoGuard.clients).toEqual(["claude"]);
+    expect(autoGuard.created).toContain(path.join(".safefs", "bin", "claude"));
+    expect(autoGuard.created).not.toContain(path.join(".safefs", "bin", "antigravity"));
     await expect(fs.stat(path.join(tmpDir, ".safefs", "bin", "antigravity"))).rejects.toMatchObject({
       code: "ENOENT",
     });
