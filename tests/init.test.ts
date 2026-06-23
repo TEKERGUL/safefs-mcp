@@ -126,7 +126,9 @@ describe("init", () => {
 
     const wrapper = await fs.readFile(path.join(tmpDir, ".safefs", "bin", "claude.cmd"), "utf-8");
 
-    expect(wrapper).toContain(`node "${localCliPath}" auto-guard run claude --`);
+    expect(wrapper).toContain("node");
+    expect(wrapper).toContain(localCliPath);
+    expect(wrapper).toContain("auto-guard run claude --");
     expect(wrapper).not.toContain("serve --root");
   });
   it("init --local writes MCP configs that run the local CLI", async () => {

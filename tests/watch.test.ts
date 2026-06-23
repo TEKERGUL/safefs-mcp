@@ -297,6 +297,8 @@ describe("watch", () => {
     );
     await fs.writeFile(path.join(tmpDir, "Readme.md"), "one", "utf-8");
     await fs.writeFile(path.join(tmpDir, "README.md"), "two", "utf-8");
+    const entries = await fs.readdir(tmpDir);
+    if (!entries.includes("Readme.md") || !entries.includes("README.md")) return;
 
     const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
 
