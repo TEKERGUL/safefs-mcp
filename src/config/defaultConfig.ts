@@ -119,7 +119,7 @@ export const DEFAULT_CONFIG: SafeFSConfig = {
     intervalMs: 1000,
     debounceMs: 750,
     moveDetectionWindowMs: 5000,
-    maxEventsPerCycle: 200,
+    maxEventsPerCycle: 500,
     maxPendingChangesWarning: 1000,
     maxFileSizeMB: 5,
     maxSnapshotBytesMB: 250,
@@ -184,7 +184,7 @@ watch:
   intervalMs: 1000
   debounceMs: 750
   moveDetectionWindowMs: 5000
-  maxEventsPerCycle: 200
+  maxEventsPerCycle: 500
   maxPendingChangesWarning: 1000
   maxFileSizeMB: 5
   maxSnapshotBytesMB: 250

@@ -1,10 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { atomicWriteFile } from "./workspace.js";
+import type { SafeFSConfig } from "../types/index.js";
 
 const SUPPRESSION_PATH = ".safefs/state/suppressions.json";
-const DEFAULT_TTL_MS = 60_000;
-const DEFAULT_LEGACY_WRITE_TTL_MS = 15_000;
+const DEFAULT_ROLLBACK_TTL_MS = 5_000;
+const DEFAULT_LEGACY_WRITE_TTL_MS = 3_000;
+const SUPPRESSION_BUFFER_MS = 1_000;
+const MIN_LEGACY_SUPPRESSION_TTL_MS = 2_500;
+const MIN_ROLLBACK_SUPPRESSION_TTL_MS = 5_000;
+const ROLLBACK_PATH_BUDGET_MS = 50;
 
 export type SuppressionReason = "rollback" | "safe_write" | "safe_patch" | "safe_delete";
 
@@ -42,8 +47,28 @@ export async function createRollbackSuppression(options: {
     root: options.root,
     paths: options.paths,
     reason: "rollback",
-    ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
+    ttlMs: options.ttlMs ?? DEFAULT_ROLLBACK_TTL_MS,
   });
+}
+
+export function calculateLegacySuppressionTtlMs(config: SafeFSConfig): number {
+  return Math.max(
+    MIN_LEGACY_SUPPRESSION_TTL_MS,
+    config.watch.intervalMs + config.watch.debounceMs + SUPPRESSION_BUFFER_MS
+  );
+}
+
+export function calculateRollbackSuppressionTtlMs(
+  config: SafeFSConfig,
+  pathCount: number
+): number {
+  return Math.max(
+    MIN_ROLLBACK_SUPPRESSION_TTL_MS,
+    config.watch.intervalMs +
+      config.watch.debounceMs +
+      SUPPRESSION_BUFFER_MS +
+      pathCount * ROLLBACK_PATH_BUDGET_MS
+  );
 }
 
 export async function isPathSuppressed(root: string, relativePath: string): Promise<boolean> {

@@ -5,7 +5,7 @@ import { sha256Buffer } from "../core/hash.js";
 import { appendEvent, generateEventId } from "../core/timeline.js";
 import { fileExists, isDirectory } from "../core/workspace.js";
 import { fileMutexes } from "../core/mutex.js";
-import { createSuppression } from "../core/suppression.js";
+import { calculateLegacySuppressionTtlMs, createSuppression } from "../core/suppression.js";
 import type { SafeFSConfig, RiskLevel } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -88,6 +88,7 @@ export async function safeDelete(options: {
       root,
       paths: [resolved.relativePath],
       reason: "safe_delete",
+      ttlMs: calculateLegacySuppressionTtlMs(config),
     });
 
     try {

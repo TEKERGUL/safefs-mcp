@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { appendEvent, generateEventId, queryEvents } from "../core/timeline.js";
 import { loadObject } from "../core/objectStore.js";
 import { resolveSafePath } from "../core/pathSafety.js";
-import { createRollbackSuppression } from "../core/suppression.js";
+import { calculateRollbackSuppressionTtlMs, createRollbackSuppression } from "../core/suppression.js";
 import { sha256File } from "../core/hash.js";
 import { atomicWriteFile, fileExists } from "../core/workspace.js";
 import type {
@@ -86,6 +86,7 @@ export async function safeRestoreFile(options: {
   await createRollbackSuppression({
     root,
     paths: [resolved.relativePath],
+    ttlMs: calculateRollbackSuppressionTtlMs(options.config, 1),
   });
 
   if (checkpoint.beforeObject) {
@@ -165,6 +166,7 @@ async function restoreMovedFile(options: {
   await createRollbackSuppression({
     root: options.root,
     paths: [from.relativePath, to.relativePath],
+    ttlMs: calculateRollbackSuppressionTtlMs(options.config, 2),
   });
 
   const content = await loadObject(options.root, options.checkpoint.afterObject);

@@ -7,7 +7,7 @@ import { atomicWriteFile, fileExists } from "../core/workspace.js";
 import { applyPatch } from "../core/patch.js";
 import { fileMutexes } from "../core/mutex.js";
 import { appendAuditLog } from "../core/auditLog.js";
-import { createSuppression } from "../core/suppression.js";
+import { calculateLegacySuppressionTtlMs, createSuppression } from "../core/suppression.js";
 import type { SafeFSConfig, RiskLevel } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -120,6 +120,7 @@ export async function safePatch(options: {
       root,
       paths: [resolved.relativePath],
       reason: "safe_patch",
+      ttlMs: calculateLegacySuppressionTtlMs(config),
     });
 
     try {

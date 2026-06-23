@@ -5,7 +5,7 @@ import { loadObject } from "./objectStore.js";
 import { detectConflict } from "./conflict.js";
 import { resolveSafePath } from "./pathSafety.js";
 import { atomicWriteFile, fileExists } from "./workspace.js";
-import { createRollbackSuppression } from "./suppression.js";
+import { calculateRollbackSuppressionTtlMs, createRollbackSuppression } from "./suppression.js";
 import { sha256Buffer } from "./hash.js";
 import type {
   SafeFSConfig,
@@ -78,13 +78,17 @@ export async function rollbackSince(options: {
     };
   }
 
-  await createRollbackSuppression({
-    root,
-    paths: rollbackPlan.planned.flatMap((plan) => [
+  const suppressionPaths = rollbackPlan.planned
+    .flatMap((plan) => [
       plan.item.path,
       plan.item.moveFromPath,
       plan.item.moveToPath,
-    ]).filter((value): value is string => Boolean(value)),
+    ])
+    .filter((value): value is string => Boolean(value));
+  await createRollbackSuppression({
+    root,
+    paths: suppressionPaths,
+    ttlMs: calculateRollbackSuppressionTtlMs(options.config, suppressionPaths.length),
   });
 
   for (const plan of rollbackPlan.planned) {
