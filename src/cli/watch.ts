@@ -93,6 +93,9 @@ export async function startWatch(
       }
 
       if (!options.quiet) {
+        for (const warning of result.warnings) {
+          console.warn(`  warning ${warning}`);
+        }
         for (const event of result.events) {
           console.log(`  ${event.operation?.padEnd(6)} ${event.path} (${event.eventId})`);
         }
@@ -151,6 +154,7 @@ function printWatchStart(options: {
   console.log(`Skipped files/dirs: ${options.skippedDetails.length}`);
   console.log(`Protected skips: ${skipped.protected}`);
   console.log(`Too-large skips: ${skipped.tooLarge}`);
+  console.log(`Binary skips: ${skipped.binary}`);
   console.log(`Excluded skips: ${skipped.excluded}`);
   console.log(`Interval: ${options.intervalMs}ms`);
   if (!options.dryRun) {
@@ -161,21 +165,24 @@ function printWatchStart(options: {
 function countSkipReasons(skippedDetails: WatchSkipDetail[]): {
   protected: number;
   tooLarge: number;
+  binary: number;
   excluded: number;
 } {
   let protectedCount = 0;
   let tooLarge = 0;
+  let binary = 0;
   let excluded = 0;
 
   for (const item of skippedDetails) {
     if (item.reason === "excluded") excluded++;
+    if (item.reason === "binary_file_skipped") binary++;
     if (item.reason === "too-large" || item.reason === "file_too_large") tooLarge++;
     if (item.reason === "protected_path" || item.reason === "safefs_internal_access") {
       protectedCount++;
     }
   }
 
-  return { protected: protectedCount, tooLarge, excluded };
+  return { protected: protectedCount, tooLarge, binary, excluded };
 }
 
 function formatBytes(bytes: number): string {

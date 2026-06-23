@@ -4,22 +4,26 @@ import { atomicWriteFile } from "./workspace.js";
 
 const SUPPRESSION_PATH = ".safefs/state/suppressions.json";
 const DEFAULT_TTL_MS = 60_000;
+const DEFAULT_LEGACY_WRITE_TTL_MS = 15_000;
+
+export type SuppressionReason = "rollback" | "safe_write" | "safe_patch" | "safe_delete";
 
 interface SuppressionFile {
   expiresAt: string;
   paths: string[];
-  reason: string;
+  reason: SuppressionReason;
 }
 
-export async function createRollbackSuppression(options: {
+export async function createSuppression(options: {
   root: string;
   paths: string[];
+  reason: SuppressionReason;
   ttlMs?: number;
 }): Promise<void> {
   const payload: SuppressionFile = {
-    expiresAt: new Date(Date.now() + (options.ttlMs ?? DEFAULT_TTL_MS)).toISOString(),
+    expiresAt: new Date(Date.now() + (options.ttlMs ?? DEFAULT_LEGACY_WRITE_TTL_MS)).toISOString(),
     paths: [...new Set(options.paths)].sort(),
-    reason: "rollback",
+    reason: options.reason,
   };
 
   await atomicWriteFile(
@@ -27,6 +31,19 @@ export async function createRollbackSuppression(options: {
     `${JSON.stringify(payload, null, 2)}\n`,
     { mode: 0o600 }
   );
+}
+
+export async function createRollbackSuppression(options: {
+  root: string;
+  paths: string[];
+  ttlMs?: number;
+}): Promise<void> {
+  await createSuppression({
+    root: options.root,
+    paths: options.paths,
+    reason: "rollback",
+    ttlMs: options.ttlMs ?? DEFAULT_TTL_MS,
+  });
 }
 
 export async function isPathSuppressed(root: string, relativePath: string): Promise<boolean> {

@@ -40,6 +40,8 @@ export interface WatchScanResult {
 export interface WatchCycleResult extends WatchScanResult {
   events: ExternalChangeResult[];
   pending: WatchPendingChanges;
+  deferredCount: number;
+  warnings: string[];
 }
 
 interface WatchMatchers {
@@ -188,14 +190,27 @@ export async function detectWorkspaceChanges(options: {
     flush: options.flush ?? false,
   });
 
+  const limited = applyCycleRateLimit({
+    changes: deferredChanges,
+    nextPending,
+    maxEventsPerCycle: options.config.watch.maxEventsPerCycle,
+  });
+
   const events = await recordStableChanges({
     root: options.root,
     config: options.config,
-    stableChanges: deferredChanges,
+    stableChanges: limited.recordable,
     nextSnapshot,
     tool: options.tool ?? "safefs_watch",
     sessionId: options.sessionId,
   });
+
+  const warnings = [...limited.warnings];
+  if (nextPending.size >= options.config.watch.maxPendingChangesWarning) {
+    warnings.push(
+      `Pending watch changes reached ${nextPending.size} (threshold: ${options.config.watch.maxPendingChangesWarning}).`
+    );
+  }
 
   return {
     snapshot: nextSnapshot,
@@ -204,6 +219,32 @@ export async function detectWorkspaceChanges(options: {
     trackedBytes: scan.trackedBytes,
     events,
     pending: nextPending,
+    deferredCount: limited.deferredCount,
+    warnings,
+  };
+}
+
+function applyCycleRateLimit(options: {
+  changes: WatchPendingChange[];
+  nextPending: WatchPendingChanges;
+  maxEventsPerCycle: number;
+}): { recordable: WatchPendingChange[]; deferredCount: number; warnings: string[] } {
+  if (options.changes.length <= options.maxEventsPerCycle) {
+    return { recordable: options.changes, deferredCount: 0, warnings: [] };
+  }
+
+  const recordable = options.changes.slice(0, options.maxEventsPerCycle);
+  const deferred = options.changes.slice(options.maxEventsPerCycle);
+  for (const change of deferred) {
+    options.nextPending.set(change.path, change);
+  }
+
+  return {
+    recordable,
+    deferredCount: deferred.length,
+    warnings: [
+      `Recorded ${recordable.length} watch changes and deferred ${deferred.length} to avoid a large event burst.`,
+    ],
   };
 }
 

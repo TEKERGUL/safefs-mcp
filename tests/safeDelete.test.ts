@@ -62,7 +62,7 @@ describe("safeDelete", () => {
     expect(restored.toString("utf-8")).toBe(content);
   });
 
-  it("directory delete is blocked in v1.0", async () => {
+  it("directory delete is blocked", async () => {
     await fs.mkdir(path.join(tmpDir, "mydir"));
     await fs.writeFile(path.join(tmpDir, "mydir", "file.txt"), "x");
 
@@ -72,7 +72,7 @@ describe("safeDelete", () => {
         path: "mydir",
         config,
       })
-    ).rejects.toThrow("not supported in v1.0");
+    ).rejects.toThrow("Directory delete is not supported");
   });
 
   it("protected file delete is blocked", async () => {

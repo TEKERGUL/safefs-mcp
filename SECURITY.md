@@ -47,10 +47,11 @@ User config can add more protected patterns but cannot remove these protections.
 ## Recommendations
 
 1. Run `safefs doctor` after installation.
-2. Review `safefs diff --since <time>` before applying rollback.
-3. Use `safefs rollback <time> --yes` only after reviewing the dry run.
-4. Pin `@tekergul/safefs-mcp` to a specific version in production-like environments.
-5. Keep using Git. SafeFS complements Git; it is not a replacement for commits or backups.
+2. Run `safefs checkup` before demos, releases, or long-running AI sessions.
+3. Review `safefs diff --since <time>` before applying rollback.
+4. Use `safefs rollback <time> --yes` only after reviewing the dry run.
+5. Pin `@tekergul/safefs-mcp` to a specific version in production-like environments.
+6. Keep using Git. SafeFS complements Git; it is not a replacement for commits or backups.
 
 ## Reporting Vulnerabilities
 
@@ -69,6 +70,7 @@ Use GitHub Security Advisories or email the maintainer listed for the project.
 
 | Version | Supported |
 | ------- | --------- |
+| 1.2.x   | Yes       |
 | 1.1.x   | Yes       |
 | 1.0.x   | Yes       |
 | 0.1.x   | No        |

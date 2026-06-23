@@ -253,3 +253,14 @@ export async function getEventCount(root: string): Promise<number> {
 
   return count;
 }
+
+export async function getTimelineSizeBytes(root: string): Promise<number> {
+  const filePath = getTimelinePath(root);
+
+  try {
+    return (await fs.stat(filePath)).size;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw err;
+  }
+}

@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { saveObject, loadObject, hasObject, getObjectPath } from "../src/core/objectStore.js";
+import { SafeFSError } from "../src/types/index.js";
+
+const COMPRESSED_OBJECT_MAGIC = Buffer.from("SAFEFS_OBJECT_GZIP_V1\n", "utf-8");
 
 let tmpDir: string;
 
@@ -74,5 +77,47 @@ describe("objectStore", () => {
     const loaded = await loadObject(tmpDir, hash);
 
     expect(Buffer.compare(loaded, buffer)).toBe(0);
+  });
+
+  it("compressed objects roundtrip exact bytes", async () => {
+    const buffer = Buffer.from("repeat me ".repeat(200), "utf-8");
+    const hash = await saveObject(tmpDir, buffer, { compression: true });
+    const objectPath = getObjectPath(tmpDir, hash);
+    const stored = await fs.readFile(objectPath);
+
+    expect(stored.subarray(0, COMPRESSED_OBJECT_MAGIC.length).equals(COMPRESSED_OBJECT_MAGIC)).toBe(true);
+    await expect(loadObject(tmpDir, hash)).resolves.toEqual(buffer);
+  });
+
+  it("raw pre-existing objects remain readable", async () => {
+    const buffer = Buffer.from("plain object", "utf-8");
+    const hash = await saveObject(tmpDir, buffer);
+    const stored = await fs.readFile(getObjectPath(tmpDir, hash));
+
+    expect(stored.subarray(0, COMPRESSED_OBJECT_MAGIC.length).equals(COMPRESSED_OBJECT_MAGIC)).toBe(false);
+    await expect(loadObject(tmpDir, hash)).resolves.toEqual(buffer);
+  });
+
+  it("dedupes by original content hash regardless of compression setting", async () => {
+    const buffer = Buffer.from("dedupe me ".repeat(50), "utf-8");
+    const rawHash = await saveObject(tmpDir, buffer);
+    const compressedAttemptHash = await saveObject(tmpDir, buffer, { compression: true });
+    const stored = await fs.readFile(getObjectPath(tmpDir, rawHash));
+
+    expect(compressedAttemptHash).toBe(rawHash);
+    expect(stored.subarray(0, COMPRESSED_OBJECT_MAGIC.length).equals(COMPRESSED_OBJECT_MAGIC)).toBe(false);
+  });
+
+  it("reports corrupt compressed objects with a friendly error code", async () => {
+    const hash = await saveObject(tmpDir, "will be corrupted", { compression: true });
+    await fs.writeFile(getObjectPath(tmpDir, hash), Buffer.concat([COMPRESSED_OBJECT_MAGIC, Buffer.from("bad gzip")]));
+
+    try {
+      await loadObject(tmpDir, hash);
+      expect.unreachable("Expected corrupt compressed object to fail");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SafeFSError);
+      expect((err as SafeFSError).code).toBe("OBJECT_DECOMPRESS_FAILED");
+    }
   });
 });

@@ -13,7 +13,7 @@ AI broke your code? Roll back the last 10 minutes.
 
 SafeFS is a lightweight session guard for AI coding agents. It records local before-change snapshots while Claude Code, Codex, Cursor, Antigravity, Gemini CLI, editors, or terminals make normal native file edits. No Git commit, Docker daemon, database, or network service is required.
 
-SafeFS is still an MCP server, but the recommended 1.1 workflow is guard-first: the watcher records native edits in the background, while MCP tools handle diff, timeline, storage status, and rollback.
+SafeFS is still an MCP server, but the recommended workflow is guard-first: the watcher records native edits in the background, while MCP tools handle diff, timeline, storage status, and rollback.
 
 ## Why SafeFS
 
@@ -93,6 +93,8 @@ SafeFS restores the pre-change state for the affected files while leaving unrela
 - Ignore protected paths, secrets, vendor folders, build output, binary files, and large files by default
 - Cache watch state in a local manifest for large projects
 - Detect stable writes, common temp files, case collisions, symlinks, and same-hash moves
+- Defer large bursts instead of dropping watcher events
+- Report project storage health with `safefs checkup`
 - Support Claude Code, Codex, Cursor, Antigravity, Gemini CLI, Roo Code, Cline, and other MCP clients
 
 ## Install Modes
@@ -125,13 +127,15 @@ safefs diff --since 10m
 safefs rollback 10m
 safefs rollback 10m --yes
 safefs storage
+safefs checkup
+safefs checkup --strict
 safefs prune --days 30
-safefs prune --days 30 --yes
+safefs prune --days 30 --yes --gc
 safefs gc
 safefs gc --yes
 ```
 
-Maintenance commands also default to dry-run. `prune` removes old timeline events and `gc` removes unreferenced objects only when `--yes` is provided.
+Maintenance commands also default to dry-run. `checkup` reports storage and watcher health without deleting anything. `prune` removes old timeline events and `gc` removes unreferenced objects only when `--yes` is provided.
 
 ## Auto-Guard, Guard, And Watch Mode
 
@@ -164,7 +168,7 @@ Use `watch` when you want a separate terminal:
 safefs watch
 ```
 
-Watch mode respects `.gitignore`, protected patterns, file-size limits, stable-write debounce, binary detection, case-collision safety, symlink policy, move detection, and `.safefs/watch/manifest.json` reuse.
+Watch mode respects `.gitignore`, protected patterns, file-size limits, stable-write debounce, binary detection, case-collision safety, symlink policy, move detection, per-cycle rate limits, and `.safefs/watch/manifest.json` reuse.
 
 ## Supported Clients
 
@@ -247,9 +251,34 @@ Default watch rules avoid:
 You can inspect local storage with:
 
 ```bash
+safefs checkup
 safefs storage
+safefs prune --days 30
+safefs prune --days 30 --yes --gc
+safefs gc --yes
 safefs timeline --since 1h
 ```
+
+`safefs storage` and `safefs checkup` use the same warning engine. They warn when the timeline file, object store, or oldest event crosses configured thresholds, but they do not prune or delete files automatically.
+
+Object compression is optional:
+
+```yaml
+storage:
+  objectCompression: true
+```
+
+When enabled, SafeFS compresses newly written objects with gzip while keeping hashes based on the original decompressed bytes. Existing raw objects remain readable and are not migrated or rewritten.
+
+## Binary File Policy
+
+SafeFS focuses on text-oriented AI coding sessions.
+
+- Watch mode skips binary files by default and reports the skip reason as `binary_file_skipped`
+- `safefs watch --dry-run` shows binary skip counts separately from other skipped files
+- Unified diff output does not attempt text diffs for binary content; binary diffs are marked as binary
+- Legacy write tools are text-oriented compatibility tools
+- The object store can roundtrip raw bytes, but watch mode keeps the safer default of skipping binary files
 
 ## Client Configuration
 
@@ -342,9 +371,9 @@ enabled_tools = [
 
 ## Limitations
 
-- Directory deletion is intentionally blocked in 1.1
+- Directory deletion is intentionally blocked
 - Function-level and exact line-range rollback are planned for later releases
-- Object compression is not enabled in 1.1
+- Object compression is opt-in and applies to new objects only; existing raw objects are not migrated
 - Auto-guard is opt-in per project; SafeFS does not modify global shell startup files
 - SafeFS complements Git; it does not replace commits, branches, or backups
 
@@ -357,14 +386,14 @@ flowchart TD
   A["AI coding client<br/>Claude, Codex, Cursor, Antigravity, Gemini"] --> B["Native edit path<br/>editor tools, terminal, agent writes"]
   A --> C["MCP control layer<br/>safe_diff, safe_timeline, safe_rollback_time"]
   B --> D["Guard / watch layer<br/>stable writes, excludes, move detection"]
-  D --> E["Path safety and policy<br/>protected patterns, symlinks, size limits"]
-  E --> F["Object store<br/>.safefs/objects"]
+  D --> E["Path safety and policy<br/>protected patterns, symlinks, size limits, rate limits"]
+  E --> F["Object store<br/>.safefs/objects, optional gzip"]
   E --> G["Timeline<br/>.safefs/timeline/events.jsonl"]
   C --> H["Rollback engine<br/>dry-run, conflict checks, restore"]
   F --> H
   G --> H
   H --> I["Workspace files"]
-  H --> J["Suppression marker<br/>prevents rollback from being re-recorded"]
+  H --> J["Suppression marker<br/>prevents rollback and legacy writes from being re-recorded"]
   J --> D
 ```
 
@@ -373,10 +402,11 @@ flowchart TD
 1. `auto-guard`, `guard`, or `watch` starts a lightweight watcher for the workspace.
 2. The agent edits files normally. SafeFS does not require the agent to call legacy write tools.
 3. Watch mode waits for writes to become stable, filters unsafe paths, and stores content-addressed objects.
-4. Timeline events record committed file changes, including write, delete, and move operations.
-5. `safe_diff` and `safefs diff` compute what rollback would restore.
-6. `safe_rollback_time` and `safefs rollback` validate current hashes before changing files.
-7. Rollback suppression prevents SafeFS from recording its own restore operation as a fresh edit.
+4. Large bursts are recorded up to the per-cycle limit; remaining stable changes stay pending for the next cycle.
+5. Timeline events record committed file changes, including write, delete, and move operations.
+6. `safe_diff` and `safefs diff` compute what rollback would restore.
+7. `safe_rollback_time` and `safefs rollback` validate current hashes before changing files.
+8. Rollback suppression prevents SafeFS from recording its own restore operation as a fresh edit.
 
 ### Design Principles
 
@@ -403,7 +433,7 @@ npm pack --dry-run
 3. Push and wait for GitHub Actions to go green.
 4. Publish with `npm publish --access public`.
 5. Verify npm with `npm view @tekergul/safefs-mcp version` and `safefs doctor --online`.
-6. Create a GitHub release with 1.1 notes; demo GIF/logo polish can follow after the release.
+6. Create a GitHub release with 1.2 notes; demo GIF/logo polish can follow after the release.
 
 ## License
 

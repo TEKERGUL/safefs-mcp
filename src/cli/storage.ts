@@ -1,5 +1,5 @@
-import { safeStorageStatus } from "../tools/safeStorageStatus.js";
 import { loadConfig } from "../config/loadConfig.js";
+import { safeStorageStatus } from "../tools/safeStorageStatus.js";
 
 export async function runStorage(root: string): Promise<void> {
   const config = await loadConfig(root);
@@ -8,8 +8,10 @@ export async function runStorage(root: string): Promise<void> {
   console.log("SafeFS storage status");
   console.log("");
   console.log(`  Events:       ${result.eventCount}`);
+  console.log(`  Timeline:     ${result.timelineApproxSize}`);
   console.log(`  Objects:      ${result.objectCount}`);
-  console.log(`  Total size:   ${result.approximateSize}`);
+  console.log(`  Object size:  ${result.approximateSize}`);
+  console.log(`  Compression:  ${result.compressionEnabled ? "enabled" : "disabled"}`);
   if (result.oldestEvent) {
     console.log(`  Oldest event: ${result.oldestEvent}`);
   }
@@ -21,7 +23,7 @@ export async function runStorage(root: string): Promise<void> {
     console.log("");
     console.log("Warnings:");
     for (const warning of result.warnings) {
-      console.log(`  ⚠ ${warning}`);
+      console.log(`  WARN ${warning}`);
     }
   }
 
@@ -29,7 +31,7 @@ export async function runStorage(root: string): Promise<void> {
     console.log("");
     console.log("Recommendations:");
     for (const rec of result.recommendations) {
-      console.log(`  → ${rec}`);
+      console.log(`  - ${rec}`);
     }
   }
 }

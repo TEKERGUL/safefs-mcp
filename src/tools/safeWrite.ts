@@ -6,6 +6,7 @@ import { appendEvent, generateEventId } from "../core/timeline.js";
 import { atomicWriteFile, fileExists } from "../core/workspace.js";
 import { fileMutexes } from "../core/mutex.js";
 import { appendAuditLog } from "../core/auditLog.js";
+import { createSuppression } from "../core/suppression.js";
 import type { SafeFSConfig, RiskLevel } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -53,12 +54,16 @@ export async function safeWrite(options: {
     if (await fileExists(resolved.absolutePath)) {
       const existingContent = await fs.readFile(resolved.absolutePath);
       beforeHash = sha256Buffer(existingContent);
-      beforeObject = await saveObject(root, existingContent);
+      beforeObject = await saveObject(root, existingContent, {
+        compression: config.storage.objectCompression,
+      });
       risk = "medium";
     }
 
     const afterHash = sha256Buffer(contentBuffer);
-    const afterObject = await saveObject(root, contentBuffer);
+    const afterObject = await saveObject(root, contentBuffer, {
+      compression: config.storage.objectCompression,
+    });
     const eventId = generateEventId();
     const pendingEvent = {
       eventId,
@@ -79,6 +84,11 @@ export async function safeWrite(options: {
     };
 
     await appendEvent(root, pendingEvent);
+    await createSuppression({
+      root,
+      paths: [resolved.relativePath],
+      reason: "safe_write",
+    });
 
     try {
       await atomicWriteFile(resolved.absolutePath, contentBuffer);

@@ -30,6 +30,8 @@ export const SafeFSConfigSchema = z.object({
       retentionWarningDays: z.number().positive().max(3650).default(30),
       retentionDays: z.number().positive().max(3650).default(30),
       autoprune: z.boolean().default(false),
+      maxTimelineBytesMB: z.number().positive().max(1024 * 1024).default(25),
+      maxObjectStoreBytesMB: z.number().positive().max(1024 * 1024).default(500),
     })
     .default({}),
   watch: z
@@ -37,6 +39,8 @@ export const SafeFSConfigSchema = z.object({
       intervalMs: z.number().int().positive().max(60000).default(1000),
       debounceMs: z.number().int().nonnegative().max(60000).default(750),
       moveDetectionWindowMs: z.number().int().nonnegative().max(60000).default(5000),
+      maxEventsPerCycle: z.number().int().positive().max(100000).default(200),
+      maxPendingChangesWarning: z.number().int().positive().max(1000000).default(1000),
       maxFileSizeMB: z.number().positive().max(1024).default(5),
       maxSnapshotBytesMB: z.number().positive().max(1024 * 1024).default(250),
       respectGitignore: z.boolean().default(true),

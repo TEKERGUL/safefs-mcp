@@ -7,6 +7,7 @@ import { runTimeline } from "./cli/timeline.js";
 import { runRollback } from "./cli/rollback.js";
 import { runDiff } from "./cli/diff.js";
 import { runStorage } from "./cli/storage.js";
+import { runCheckup } from "./cli/checkup.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runWatch } from "./cli/watch.js";
 import { runGuard } from "./cli/guard.js";
@@ -66,6 +67,9 @@ async function main(): Promise<void> {
     case "storage":
       await handleStorage();
       break;
+    case "checkup":
+      await handleCheckup();
+      break;
     case "doctor":
       await handleDoctor();
       break;
@@ -108,7 +112,9 @@ Usage:
   safefs guard -- <command>          Run a command with SafeFS watching native edits
   safefs auto-guard <subcommand>     Manage project-local auto-guard wrappers
   safefs mcp-config <client>         Print MCP config snippets for global clients
-  safefs prune [--days N] [--yes]   Preview or remove old timeline events
+  safefs checkup [options]           Report project storage and watcher health
+  safefs prune [--days N] [--yes] [--gc]
+                                    Preview or remove old timeline events
   safefs gc [--yes]                 Preview or remove unreferenced objects
   safefs storage                     Show storage status
 
@@ -127,6 +133,10 @@ Watch options:
   --interval <ms>            Polling interval (default: 1000)
   --once                     Build baseline and exit
   --dry-run                  Show watch baseline summary without writing SafeFS state
+
+Check-up options:
+  --json                     Print a machine-readable health report
+  --strict                   Exit non-zero when warnings are present
 
 Auto-guard subcommands:
   install [--clients <list>] Install project-local wrappers
@@ -158,9 +168,12 @@ Examples:
   safefs mcp-config antigravity
   safefs timeline --since 3h
   safefs diff 1h
+  safefs checkup
+  safefs checkup --strict
   safefs watch
   safefs guard -- claude
   safefs auto-guard install --clients claude,codex
+  safefs prune --days 30 --yes --gc
   safefs rollback 1h
   safefs rollback 1h --yes
   safefs rollback 3h --path src/auth/login.ts --yes
@@ -238,6 +251,14 @@ async function handleDiff(): Promise<void> {
 async function handleStorage(): Promise<void> {
   const root = resolveRoot();
   await runStorage(root);
+}
+
+async function handleCheckup(): Promise<void> {
+  const root = resolveRoot();
+  await runCheckup(root, {
+    json: args.includes("--json"),
+    strict: args.includes("--strict"),
+  });
 }
 
 async function handleDoctor(): Promise<void> {

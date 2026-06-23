@@ -65,7 +65,11 @@ export async function snapshotFileForExternalTracking(options: {
   const hash = sha256Buffer(content);
   return {
     hash,
-    object: options.dryRun ? hash : await saveObject(root, content),
+    object: options.dryRun
+      ? hash
+      : await saveObject(root, content, {
+          compression: config.storage.objectCompression,
+        }),
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     binary,

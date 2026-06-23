@@ -1,9 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { gzip, gunzip } from "node:zlib";
 import { sha256Buffer } from "./hash.js";
 import { SafeFSError } from "../types/index.js";
 import type { StorageStats } from "../types/index.js";
 import { atomicWriteFile } from "./workspace.js";
+
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
+const COMPRESSED_OBJECT_MAGIC = Buffer.from("SAFEFS_OBJECT_GZIP_V1\n", "utf-8");
 
 function assertValidHash(hash: string): void {
   const HEX_RE = /^[0-9a-f]{64}$/;
@@ -19,7 +25,8 @@ function getObjectFilePath(root: string, hash: string): string {
 
 export async function saveObject(
   root: string,
-  content: Buffer | string
+  content: Buffer | string,
+  options: { compression?: boolean } = {}
 ): Promise<string> {
   const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
   const hash = sha256Buffer(buffer);
@@ -29,7 +36,8 @@ export async function saveObject(
 
   try {
     const existing = await fs.readFile(objPath);
-    if (sha256Buffer(existing) === hash && existing.equals(buffer)) {
+    const decoded = await decodeObjectFile(existing);
+    if (sha256Buffer(decoded) === hash && decoded.equals(buffer)) {
       return hash;
     }
   } catch (err) {
@@ -38,10 +46,12 @@ export async function saveObject(
     }
   }
 
-  await atomicWriteFile(objPath, buffer, { mode: 0o600, verify: true });
+  const stored = options.compression ? await encodeCompressedObject(buffer) : buffer;
+  await atomicWriteFile(objPath, stored, { mode: 0o600, verify: true });
 
   const written = await fs.readFile(objPath);
-  if (sha256Buffer(written) !== hash || !written.equals(buffer)) {
+  const decoded = await decodeObjectFile(written);
+  if (sha256Buffer(decoded) !== hash || !decoded.equals(buffer)) {
     throw new SafeFSError("OBJECT_WRITE_VERIFY_FAILED", `Object verification failed: ${hash}`);
   }
 
@@ -53,7 +63,7 @@ export async function loadObject(root: string, hash: string): Promise<Buffer> {
   const objPath = getObjectFilePath(root, hash);
 
   try {
-    return await fs.readFile(objPath);
+    return await decodeObjectFile(await fs.readFile(objPath));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new SafeFSError(
@@ -62,6 +72,26 @@ export async function loadObject(root: string, hash: string): Promise<Buffer> {
       );
     }
     throw err;
+  }
+}
+
+async function encodeCompressedObject(buffer: Buffer): Promise<Buffer> {
+  const compressed = await gzipAsync(buffer);
+  return Buffer.concat([COMPRESSED_OBJECT_MAGIC, compressed]);
+}
+
+async function decodeObjectFile(buffer: Buffer): Promise<Buffer> {
+  if (!buffer.subarray(0, COMPRESSED_OBJECT_MAGIC.length).equals(COMPRESSED_OBJECT_MAGIC)) {
+    return buffer;
+  }
+
+  try {
+    return await gunzipAsync(buffer.subarray(COMPRESSED_OBJECT_MAGIC.length));
+  } catch (err) {
+    throw new SafeFSError(
+      "OBJECT_DECOMPRESS_FAILED",
+      `Failed to decompress SafeFS object: ${err instanceof Error ? err.message : "unknown error"}`
+    );
   }
 }
 

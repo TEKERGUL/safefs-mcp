@@ -112,11 +112,15 @@ export const DEFAULT_CONFIG: SafeFSConfig = {
     retentionWarningDays: 30,
     retentionDays: 30,
     autoprune: false,
+    maxTimelineBytesMB: 25,
+    maxObjectStoreBytesMB: 500,
   },
   watch: {
     intervalMs: 1000,
     debounceMs: 750,
     moveDetectionWindowMs: 5000,
+    maxEventsPerCycle: 200,
+    maxPendingChangesWarning: 1000,
     maxFileSizeMB: 5,
     maxSnapshotBytesMB: 250,
     respectGitignore: true,
@@ -173,11 +177,15 @@ storage:
   retentionWarningDays: 30
   retentionDays: 30
   autoprune: false
+  maxTimelineBytesMB: 25
+  maxObjectStoreBytesMB: 500
 
 watch:
   intervalMs: 1000
   debounceMs: 750
   moveDetectionWindowMs: 5000
+  maxEventsPerCycle: 200
+  maxPendingChangesWarning: 1000
   maxFileSizeMB: 5
   maxSnapshotBytesMB: 250
   respectGitignore: true

@@ -5,7 +5,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config/defaultConfig.js";
 import { runGuard } from "../src/cli/guard.js";
 import { rollbackSince } from "../src/core/rollback.js";
+import { queryEvents } from "../src/core/timeline.js";
 import { detectWorkspaceChanges, scanWorkspaceForWatch } from "../src/core/watch.js";
+import { safeDelete } from "../src/tools/safeDelete.js";
+import { safePatch } from "../src/tools/safePatch.js";
+import { safeWrite } from "../src/tools/safeWrite.js";
 
 let tmpDir: string;
 
@@ -119,6 +123,80 @@ describe("watch", () => {
     expect(baseline.skippedDetails.map((item) => item.reason)).toContain("too-large");
   });
 
+  it("defers stable changes beyond the configured per-cycle limit", async () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      watch: {
+        ...DEFAULT_CONFIG.watch,
+        maxEventsPerCycle: 1,
+        maxPendingChangesWarning: 2,
+      },
+    };
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config });
+    await fs.writeFile(path.join(tmpDir, "a.txt"), "a", "utf-8");
+    await fs.writeFile(path.join(tmpDir, "b.txt"), "b", "utf-8");
+    await fs.writeFile(path.join(tmpDir, "c.txt"), "c", "utf-8");
+
+    const firstCycle = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: baseline.snapshot,
+      stableMs: 0,
+      nowMs: 1000,
+    });
+
+    expect(firstCycle.events).toHaveLength(1);
+    expect(firstCycle.deferredCount).toBe(2);
+    expect(firstCycle.pending.size).toBe(2);
+    expect(firstCycle.warnings.some((warning) => warning.includes("deferred 2"))).toBe(true);
+
+    const secondCycle = await detectWorkspaceChanges({
+      root: tmpDir,
+      config,
+      previous: firstCycle.snapshot,
+      pending: firstCycle.pending,
+      stableMs: 0,
+      nowMs: 2000,
+    });
+
+    expect(secondCycle.events).toHaveLength(1);
+    expect(secondCycle.deferredCount).toBe(1);
+    expect(secondCycle.pending.size).toBe(1);
+  });
+
+  it("coalesces repeated pending writes to the final stable state", async () => {
+    const filePath = path.join(tmpDir, "coalesce.txt");
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    await fs.writeFile(filePath, "first\n", "utf-8");
+    const pending = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      nowMs: 1000,
+    });
+
+    await fs.writeFile(filePath, "final\n", "utf-8");
+    const changedPending = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      pending: pending.pending,
+      nowMs: 1200,
+    });
+    const stable = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      pending: changedPending.pending,
+      nowMs: 2500,
+    });
+
+    expect(stable.events).toHaveLength(1);
+    const events = await queryEvents(tmpDir, { path: "coalesce.txt" });
+    expect(stable.snapshot.get("coalesce.txt")?.hash).toBe(events[0]?.afterHash);
+  });
+
   it("suppresses watcher events caused by rollback", async () => {
     const filePath = path.join(tmpDir, "app.ts");
     await fs.writeFile(filePath, "clean\n", "utf-8");
@@ -149,6 +227,77 @@ describe("watch", () => {
     });
     expect(afterRollback.events).toHaveLength(0);
     await expect(fs.readFile(filePath, "utf-8")).resolves.toBe("clean\n");
+  });
+
+  it("suppresses watcher duplicate events caused by legacy safeWrite", async () => {
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    await safeWrite({
+      root: tmpDir,
+      path: "legacy-write.txt",
+      content: "from safe write\n",
+      config: DEFAULT_CONFIG,
+    });
+
+    const watched = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      stableMs: 0,
+    });
+    const events = await queryEvents(tmpDir, {});
+
+    expect(watched.events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.tool).toBe("safe_write");
+  });
+
+  it("suppresses watcher duplicate events caused by legacy safePatch", async () => {
+    await fs.writeFile(path.join(tmpDir, "legacy-patch.txt"), "hello world\n", "utf-8");
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    await safePatch({
+      root: tmpDir,
+      path: "legacy-patch.txt",
+      search: "world",
+      replace: "SafeFS",
+      config: DEFAULT_CONFIG,
+    });
+
+    const watched = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      stableMs: 0,
+    });
+    const events = await queryEvents(tmpDir, {});
+
+    expect(watched.events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.tool).toBe("safe_patch");
+  });
+
+  it("suppresses watcher duplicate events caused by legacy safeDelete", async () => {
+    await fs.writeFile(path.join(tmpDir, "legacy-delete.txt"), "delete me\n", "utf-8");
+    const baseline = await scanWorkspaceForWatch({ root: tmpDir, config: DEFAULT_CONFIG });
+
+    await safeDelete({
+      root: tmpDir,
+      path: "legacy-delete.txt",
+      config: DEFAULT_CONFIG,
+    });
+
+    const watched = await detectWorkspaceChanges({
+      root: tmpDir,
+      config: DEFAULT_CONFIG,
+      previous: baseline.snapshot,
+      stableMs: 0,
+    });
+    const events = await queryEvents(tmpDir, {});
+
+    expect(watched.events).toHaveLength(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.tool).toBe("safe_delete");
   });
 
   it("detects same-hash move and rollback moves the file back", async () => {

@@ -81,11 +81,15 @@ export interface SafeFSConfig {
     retentionWarningDays: number;
     retentionDays: number;
     autoprune: boolean;
+    maxTimelineBytesMB: number;
+    maxObjectStoreBytesMB: number;
   };
   watch: {
     intervalMs: number;
     debounceMs: number;
     moveDetectionWindowMs: number;
+    maxEventsPerCycle: number;
+    maxPendingChangesWarning: number;
     maxFileSizeMB: number;
     maxSnapshotBytesMB: number;
     respectGitignore: boolean;

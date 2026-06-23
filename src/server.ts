@@ -14,7 +14,7 @@ import { SafeFSError } from "./types/index.js";
 export function createServer(root: string): McpServer {
   const server = new McpServer({
     name: "safefs",
-    version: "1.1.0",
+    version: "1.2.0",
   });
 
   server.tool(

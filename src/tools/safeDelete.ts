@@ -5,6 +5,7 @@ import { sha256Buffer } from "../core/hash.js";
 import { appendEvent, generateEventId } from "../core/timeline.js";
 import { fileExists, isDirectory } from "../core/workspace.js";
 import { fileMutexes } from "../core/mutex.js";
+import { createSuppression } from "../core/suppression.js";
 import type { SafeFSConfig, RiskLevel } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -36,7 +37,7 @@ export async function safeDelete(options: {
   if (await isDirectory(resolved.absolutePath)) {
     throw new SafeFSError(
       "DIRECTORY_DELETE_UNSUPPORTED",
-      "Directory delete is not supported in v1.0. Delete files individually."
+      "Directory delete is not supported. Delete files individually."
     );
   }
 
@@ -60,7 +61,9 @@ export async function safeDelete(options: {
 
     const existingContent = await fs.readFile(resolved.absolutePath);
     const beforeHash = sha256Buffer(existingContent);
-    const beforeObject = await saveObject(root, existingContent);
+    const beforeObject = await saveObject(root, existingContent, {
+      compression: config.storage.objectCompression,
+    });
     const eventId = generateEventId();
     const pendingEvent = {
       eventId,
@@ -81,6 +84,11 @@ export async function safeDelete(options: {
     };
 
     await appendEvent(root, pendingEvent);
+    await createSuppression({
+      root,
+      paths: [resolved.relativePath],
+      reason: "safe_delete",
+    });
 
     try {
       await fs.unlink(resolved.absolutePath);

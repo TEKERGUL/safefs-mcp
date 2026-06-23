@@ -356,6 +356,7 @@ function printInitSummary(result: InitResult): void {
   console.log("");
   console.log("Next:");
   console.log("  safefs doctor");
+  console.log("  safefs checkup");
   const antigravitySelected = result.clients.includes("antigravity");
   if (result.autoGuard) {
     if (process.platform === "win32") {

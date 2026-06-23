@@ -44,5 +44,7 @@ node dist/cli.js init --local --yes --clients codex,cursor,claude,gemini,antigra
 - Antigravity is watch-first because its MCP config is global/shared; run `safefs watch` while using the IDE.
 - Run `safefs doctor --gemini-smoke` to verify Gemini CLI can see the SafeFS MCP config.
 - Run `safefs doctor --antigravity` to verify Antigravity's global MCP config points to this project.
+- Run `safefs checkup` to inspect timeline/object growth before demos, releases, or long-running sessions.
+- Use `safefs prune --days 30 --yes --gc` only after reviewing the dry-run output.
 - The `safefs.yml` file is an example `.safefs.yml` project config.
 - If developing from a local GitHub checkout, replace `npx -y @tekergul/safefs-mcp` with `node dist/cli.js` for local CLI commands.

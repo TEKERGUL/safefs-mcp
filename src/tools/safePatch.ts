@@ -7,6 +7,7 @@ import { atomicWriteFile, fileExists } from "../core/workspace.js";
 import { applyPatch } from "../core/patch.js";
 import { fileMutexes } from "../core/mutex.js";
 import { appendAuditLog } from "../core/auditLog.js";
+import { createSuppression } from "../core/suppression.js";
 import type { SafeFSConfig, RiskLevel } from "../types/index.js";
 import { SafeFSError } from "../types/index.js";
 
@@ -69,14 +70,22 @@ export async function safePatch(options: {
     });
 
     const beforeHash = sha256Buffer(existingBuffer);
-    const beforeObject = await saveObject(root, existingBuffer);
+    const beforeObject = await saveObject(root, existingBuffer, {
+      compression: config.storage.objectCompression,
+    });
 
     const patchedBuffer = Buffer.from(patchResult.patched);
     const afterHash = sha256Buffer(patchedBuffer);
-    const afterObject = await saveObject(root, patchedBuffer);
+    const afterObject = await saveObject(root, patchedBuffer, {
+      compression: config.storage.objectCompression,
+    });
 
-    const beforeBlockObject = await saveObject(root, search);
-    const afterBlockObject = await saveObject(root, replace);
+    const beforeBlockObject = await saveObject(root, search, {
+      compression: config.storage.objectCompression,
+    });
+    const afterBlockObject = await saveObject(root, replace, {
+      compression: config.storage.objectCompression,
+    });
     const eventId = generateEventId();
     const pendingEvent = {
       eventId,
@@ -107,6 +116,11 @@ export async function safePatch(options: {
     };
 
     await appendEvent(root, pendingEvent);
+    await createSuppression({
+      root,
+      paths: [resolved.relativePath],
+      reason: "safe_patch",
+    });
 
     try {
       await atomicWriteFile(resolved.absolutePath, patchedBuffer);
